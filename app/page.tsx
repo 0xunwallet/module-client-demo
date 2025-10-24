@@ -91,7 +91,7 @@ export default function Home() {
     // Required State Data reflects the investment option selected in Step 3
     const isArbitrumInvestment = selectedInvestment === "arbitrum";
     const investmentChainId = isArbitrumInvestment ? "421614" : "84532"; // Arbitrum Sepolia or Base Sepolia
-    const investmentTokenAddress = isArbitrumInvestment 
+    const investmentTokenAddress = isArbitrumInvestment
       ? "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d" // Arbitrum USDC
       : "0x036CbD53842c5426634e7929541eC2318f3dCF7e"; // Base USDC
 
@@ -116,11 +116,11 @@ export default function Home() {
     // Use the first available amount (arbitrum takes priority if both are filled)
     const hasArbitrumAmount = arbitrumAmount && parseFloat(arbitrumAmount) > 0;
     const hasBaseAmount = baseAmount && parseFloat(baseAmount) > 0;
-    
+
     // Current State represents which chain you're depositing FROM
     const isDepositingFromArbitrum = hasArbitrumAmount;
     const depositChainId = isDepositingFromArbitrum ? "421614" : "84532"; // Arbitrum Sepolia or Base Sepolia
-    
+
     const currentStateData = {
       chainId: depositChainId,
       tokenAddress: hasArbitrumAmount
@@ -192,7 +192,7 @@ export default function Home() {
       // Use the investment chain ID from requiredStateData (where investment will be)
       const isArbitrumInvestment = selectedInvestment === "arbitrum";
       const investmentChainId = isArbitrumInvestment ? "421614" : "84532"; // Arbitrum Sepolia or Base Sepolia
-      
+
       const requiredStateForOrchestration: RequiredState = {
         chainId: investmentChainId,
         moduleName: selectedModule || "AUTOSWAP",
@@ -264,8 +264,8 @@ export default function Home() {
         <div className="container mx-auto px-4 py-8">
           <div className="flex w-full justify-between items-center mb-8">
             <ThemeToggle />
-          <ConnectButton />
-        </div>
+            <ConnectButton />
+          </div>
 
           {/* Progress Indicator */}
           <div className="max-w-2xl mx-auto mb-8">
@@ -292,7 +292,7 @@ export default function Home() {
                   </div>
                 )
               )}
-        </div>
+            </div>
           </div>
 
           <div className="max-w-2xl mx-auto">
@@ -642,17 +642,17 @@ export default function Home() {
                         <p>
                           <strong>Request ID:</strong>{" "}
                           {orchestrationData.requestId}
-              </p>
-              <p>
+                        </p>
+                        <p>
                           <strong>Source Chain Owner:</strong>{" "}
                           {orchestrationData.sourceChainOwner}
-              </p>
-              <p>
+                        </p>
+                        <p>
                           <strong>Destination Chain Owner:</strong>{" "}
                           {orchestrationData.destinationChainOwner}
-              </p>
-            </div>
-            </div>
+                        </p>
+                      </div>
+                    </div>
                   )}
 
                   <Button
