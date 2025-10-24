@@ -44,7 +44,6 @@ export default function Home() {
         sourceChainId: chainId,
       });
       setRequiredState(result);
-      console.log("Required State:", result);
 
       // Initialize form data with configTemplate values
       const initialFormData: Record<string, string | number> = {};
@@ -79,7 +78,6 @@ export default function Home() {
       config: formData,
     };
     console.log("Generated Object:", result);
-    alert("Object logged to console! Check developer tools.");
   };
 
   return (
@@ -142,21 +140,6 @@ export default function Home() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                  <div className="p-4 bg-muted rounded-lg">
-                    <div className="space-y-2 text-sm">
-                      <p>
-                        <strong>Module:</strong> {requiredState.moduleName}
-                      </p>
-                      <p>
-                        <strong>Chain ID:</strong> {requiredState.chainId}
-                      </p>
-                      <p>
-                        <strong>Config Input Type:</strong>{" "}
-                        {requiredState.configInputType}
-                      </p>
-                    </div>
-                  </div>
-
                   <div className="space-y-4">
                     {requiredState.requiredFields.map((field: ConfigField) => (
                       <div key={field.name} className="space-y-2">
@@ -185,25 +168,8 @@ export default function Home() {
                   </div>
 
                   <Button onClick={handleSubmit} className="w-full">
-                    Create Object & Log
+                    Submit
                   </Button>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Debug: Show required state */}
-            {requiredState && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Debug: Required State Response</CardTitle>
-                  <CardDescription>
-                    Raw response from getRequiredState
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <pre className="p-4 bg-muted rounded-lg text-sm overflow-auto">
-                    {JSON.stringify(requiredState, null, 2)}
-                  </pre>
                 </CardContent>
               </Card>
             )}
