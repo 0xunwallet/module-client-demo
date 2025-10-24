@@ -5,6 +5,23 @@ import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { getRequiredState, getRequiredAvailableModules } from "unwallet";
 import type { ModuleName, RequiredStateData, ConfigField } from "unwallet";
 import { useState } from "react";
+import { ThemeToggle } from "@/components/theme-toggle";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export default function Home() {
   const chainId = BASE_CHAIN.id;
@@ -67,106 +84,131 @@ export default function Home() {
 
   return (
     <AuthWrapper>
-      <div className="flex min-h-screen items-center justify-center font-sans">
-        <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 sm:items-start">
-          <div className="flex w-full justify-between items-center">
-            <p></p>
+      <div className="min-h-screen bg-background">
+        <div className="container mx-auto px-4 py-8">
+          <div className="flex w-full justify-between items-center mb-8">
+            <ThemeToggle />
             <ConnectButton />
           </div>
 
-          <div className="w-full space-y-6">
+          <div className="max-w-2xl mx-auto space-y-6">
             {/* Step 1: Module Selection */}
-            <div>
-              <h2 className="text-xl font-bold mb-4">Step 1: Select Module</h2>
-              <select
-                value={selectedModule || ""}
-                onChange={(e) =>
-                  handleModuleSelect(e.target.value as ModuleName)
-                }
-                className="w-full p-2 border border-gray-300 rounded"
-              >
-                <option value="">Select a module...</option>
-                {availableModules.map((module) => (
-                  <option key={module} value={module}>
-                    {module}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <Card>
+              <CardHeader>
+                <CardTitle>Step 1: Select Module</CardTitle>
+                <CardDescription>Choose a module to configure</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Select
+                  value={selectedModule || ""}
+                  onValueChange={(value) =>
+                    handleModuleSelect(value as ModuleName)
+                  }
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select a module..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableModules.map((module) => (
+                      <SelectItem key={module} value={module}>
+                        {module}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </CardContent>
+            </Card>
 
             {/* Loading state */}
             {loading && (
-              <div className="text-center">
-                <p>Loading required state...</p>
-              </div>
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="text-center">
+                    <p className="text-muted-foreground">
+                      Loading required state...
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
             )}
 
             {/* Step 2: Required Fields Form */}
             {requiredState && !loading && (
-              <div>
-                <h2 className="text-xl font-bold mb-4">
-                  Step 2: Fill Required Fields
-                </h2>
-                <div className="mb-4 p-3 rounded">
-                  <p>
-                    <strong>Module:</strong> {requiredState.moduleName}
-                  </p>
-                  <p>
-                    <strong>Chain ID:</strong> {requiredState.chainId}
-                  </p>
-                  <p>
-                    <strong>Config Input Type:</strong>{" "}
-                    {requiredState.configInputType}
-                  </p>
-                </div>
-                <div className="space-y-4">
-                  {requiredState.requiredFields.map((field: ConfigField) => (
-                    <div key={field.name}>
-                      <label className="block text-sm font-medium mb-1">
-                        {field.name} ({field.type}):
-                      </label>
-                      <input
-                        type={
-                          field.type === "uint256" || field.type === "uint24"
-                            ? "number"
-                            : "text"
-                        }
-                        value={formData[field.name] || ""}
-                        onChange={(e) => {
-                          const value =
-                            field.type === "uint256" || field.type === "uint24"
-                              ? parseInt(e.target.value) || 0
-                              : e.target.value;
-                          handleFieldChange(field.name, value);
-                        }}
-                        placeholder={`Enter ${field.name}`}
-                        className="w-full p-2 border border-gray-300 rounded"
-                      />
+              <Card>
+                <CardHeader>
+                  <CardTitle>Step 2: Fill Required Fields</CardTitle>
+                  <CardDescription>
+                    Configure the module parameters
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="p-4 bg-muted rounded-lg">
+                    <div className="space-y-2 text-sm">
+                      <p>
+                        <strong>Module:</strong> {requiredState.moduleName}
+                      </p>
+                      <p>
+                        <strong>Chain ID:</strong> {requiredState.chainId}
+                      </p>
+                      <p>
+                        <strong>Config Input Type:</strong>{" "}
+                        {requiredState.configInputType}
+                      </p>
                     </div>
-                  ))}
-                </div>
-                <button
-                  onClick={handleSubmit}
-                  className="mt-4 px-4 py-2 rounded"
-                >
-                  Create Object & Log
-                </button>
-              </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    {requiredState.requiredFields.map((field: ConfigField) => (
+                      <div key={field.name} className="space-y-2">
+                        <label className="text-sm font-medium">
+                          {field.name} ({field.type})
+                        </label>
+                        <Input
+                          type={
+                            field.type === "uint256" || field.type === "uint24"
+                              ? "number"
+                              : "text"
+                          }
+                          value={formData[field.name] || ""}
+                          onChange={(e) => {
+                            const value =
+                              field.type === "uint256" ||
+                              field.type === "uint24"
+                                ? parseInt(e.target.value) || 0
+                                : e.target.value;
+                            handleFieldChange(field.name, value);
+                          }}
+                          placeholder={`Enter ${field.name}`}
+                        />
+                      </div>
+                    ))}
+                  </div>
+
+                  <Button onClick={handleSubmit} className="w-full">
+                    Create Object & Log
+                  </Button>
+                </CardContent>
+              </Card>
             )}
 
             {/* Debug: Show required state */}
             {requiredState && (
-              <div>
-                <h3 className="text-lg font-bold mb-2">
-                  Required State Response:
-                </h3>
-                <pre className="p-4 rounded text-sm overflow-auto">
-                  {JSON.stringify(requiredState, null, 2)}
-                </pre>
-              </div>
+              <Card>
+                <CardHeader>
+                  <CardTitle>Debug: Required State Response</CardTitle>
+                  <CardDescription>
+                    Raw response from getRequiredState
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <pre className="p-4 bg-muted rounded-lg text-sm overflow-auto">
+                    {JSON.stringify(requiredState, null, 2)}
+                  </pre>
+                </CardContent>
+              </Card>
             )}
           </div>
-        </main>
+        </div>
       </div>
     </AuthWrapper>
   );
