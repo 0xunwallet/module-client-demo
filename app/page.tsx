@@ -11,19 +11,28 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { useState } from "react";
-import { getRequiredState, createOrchestrationData } from "unwallet";
+import {
+  getRequiredState,
+  createOrchestrationData,
+  notifyDeposit,
+  pollOrchestrationStatus,
+  transferToOrchestrationAccount,
+  buildAutoEarnModule,
+  encodeAutoEarnModuleData,
+  createAutoEarnConfig,
+} from "unwallet";
 import type {
   ModuleName,
   RequiredStateData,
   CurrentState,
-  RequiredState,
+  OrchestrationData,
 } from "unwallet";
-import { BASE_CHAIN } from "@/lib/chain-constants";
 import { Input } from "@/components/ui/input";
-import { useWalletClient } from "wagmi";
+import { useWalletClient, usePublicClient } from "wagmi";
 
 export default function Home() {
   const { data: walletClient } = useWalletClient();
+  const publicClient = usePublicClient();
   const [currentStep, setCurrentStep] = useState(1);
   const totalSteps = 6;
   const [selectedModule, setSelectedModule] = useState<ModuleName | null>(null);
@@ -48,12 +57,8 @@ export default function Home() {
     tokenAddress: string;
     amount: string;
   } | null>(null);
-  const [orchestrationData, setOrchestrationData] = useState<{
-    destinationTokenAddress: string;
-    requestId: string;
-    sourceChainOwner: string;
-    destinationChainOwner: string;
-  } | null>(null);
+  const [orchestrationData, setOrchestrationData] =
+    useState<OrchestrationData | null>(null);
   const [transferLoading, setTransferLoading] = useState(false);
 
   const nextStep = () => {
@@ -72,9 +77,12 @@ export default function Home() {
     setSelectedModule(moduleName);
     setLoading(true);
     try {
+      // Match test script: getRequiredState is called with arbitrumSepolia.id (destination chain)
+      // This is where the module will execute, not where funds come from
+      const ARBITRUM_SEPOLIA_CHAIN_ID = 421614;
       const result = await getRequiredState({
         moduleName,
-        sourceChainId: BASE_CHAIN.id,
+        sourceChainId: ARBITRUM_SEPOLIA_CHAIN_ID, // Match test: arbitrumSepolia.id
       });
       setRequiredState(result);
       setCurrentStep(3); // Move to step 3 after getting required state
@@ -95,6 +103,9 @@ export default function Home() {
       ? "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d" // Arbitrum USDC
       : "0x036CbD53842c5426634e7929541eC2318f3dCF7e"; // Base USDC
 
+    // Aave pool address (vault address) - same for both chains in this case
+    const aavePoolAddress = "0xBfC91D59fdAA134A4ED45f7B584cAf96D7792Eff"; // Aave pool on Arbitrum Sepolia
+
     const requiredStateData = {
       module_address:
         requiredState.moduleAddress ||
@@ -103,7 +114,7 @@ export default function Home() {
       abi_encode: {
         chainId: investmentChainId,
         tokenAddress: investmentTokenAddress,
-        vaultAddress: "0x0000000000000000000000000000000000000000", // If exists
+        vaultAddress: aavePoolAddress, // Aave pool address (vault address)
       },
     };
 
@@ -115,7 +126,6 @@ export default function Home() {
   const prepareCurrentState = () => {
     // Use the first available amount (arbitrum takes priority if both are filled)
     const hasArbitrumAmount = arbitrumAmount && parseFloat(arbitrumAmount) > 0;
-    const hasBaseAmount = baseAmount && parseFloat(baseAmount) > 0;
 
     // Current State represents which chain you're depositing FROM
     const isDepositingFromArbitrum = hasArbitrumAmount;
@@ -180,74 +190,222 @@ export default function Home() {
     if (!currentState || !walletClient) return;
 
     try {
-      // Prepare current state for createOrchestrationData
+      // EXACT MATCH TO TEST FILE - Network configurations
+      const NETWORKS = {
+        baseSepolia: {
+          contracts: {
+            usdcToken:
+              "0x036CbD53842c5426634e7929541eC2318f3dCF7e" as `0x${string}`,
+          },
+        },
+        arbitrumSepolia: {
+          contracts: {
+            usdcToken:
+              "0x75faf114eafb1bdbe2f0316df893fd58ce46aa4d" as `0x${string}`,
+            aavePool:
+              "0xBfC91D59fdAA134A4ED45f7B584cAf96D7792Eff" as `0x${string}`,
+          },
+        },
+      };
+
+      // EXACT MATCH TO TEST FILE - Test configuration
+      const TEST_CONFIG = {
+        bridgeAmount: parseFloat(currentState.amount) * 1e6, // parseUnits equivalent
+        apiUrl: process.env.NEXT_PUBLIC_SERVER_URL || "https://tee.wall8.xyz",
+        apiKey: process.env.NEXT_PUBLIC_API_KEY || "test-api-orchestration",
+      };
+
+      // EXACT MATCH TO TEST FILE - Get required state for AutoEarn module
+      console.log("\n📊 Getting Required State");
+      console.log("--------------------------");
+      const requiredState = await getRequiredState({
+        sourceChainId: 421614, // arbitrumSepolia.id
+        moduleName: "AUTOEARN",
+      });
+
+      console.log("✅ Required state retrieved:");
+      console.log(`   Chain ID: ${requiredState.chainId}`);
+      console.log(`   Module: ${requiredState.moduleName}`);
+      console.log(`   Module Address: ${requiredState.moduleAddress}`);
+      console.log(`   Config Input Type: ${requiredState.configInputType}`);
+
+      // EXACT MATCH TO TEST FILE - Build AutoEarn module
+      let encodedData: string;
+
+      try {
+        console.log("🔧 Building AutoEarn module using server API...");
+        const autoEarnModule = await buildAutoEarnModule(
+          {
+            chainId: 421614, // arbitrumSepolia.id
+            tokenAddress: NETWORKS.arbitrumSepolia.contracts.usdcToken,
+            // vaultAddress is optional - server uses default Aave pool
+          },
+          {
+            baseUrl: TEST_CONFIG.apiUrl,
+          }
+        );
+        encodedData = autoEarnModule.data;
+        console.log(
+          `✅ AutoEarn module built via server API: ${autoEarnModule.address}`
+        );
+      } catch (error) {
+        console.log(
+          "⚠️  Server API not available, using client-side encoding..."
+        );
+        console.log(
+          `   Error: ${error instanceof Error ? error.message : String(error)}`
+        );
+        const autoEarnConfig = createAutoEarnConfig(
+          421614, // arbitrumSepolia.id
+          NETWORKS.arbitrumSepolia.contracts.usdcToken,
+          NETWORKS.arbitrumSepolia.contracts.aavePool
+        );
+        encodedData = encodeAutoEarnModuleData([autoEarnConfig]);
+        console.log(
+          `✅ AutoEarn module encoded client-side: ${requiredState.moduleAddress}`
+        );
+      }
+
+      // EXACT MATCH TO TEST FILE - Create orchestration request
+      console.log("\n🎯 Creating orchestration request...");
       const currentStateForOrchestration: CurrentState = {
-        chainId: parseInt(currentState.chainId) as 84532 | 421614, // Convert string to number and cast to valid chain ID
-        tokenAddress: currentState.tokenAddress as `0x${string}`,
-        tokenAmount: (parseFloat(currentState.amount) * 1e6).toString(), // Convert to string
+        chainId: 84532, // baseSepolia.id
+        tokenAddress: NETWORKS.baseSepolia.contracts.usdcToken,
+        tokenAmount: TEST_CONFIG.bridgeAmount.toString(),
         ownerAddress: walletClient.account.address,
       };
 
-      // Prepare required state for createOrchestrationData
-      // Use the investment chain ID from requiredStateData (where investment will be)
-      const isArbitrumInvestment = selectedInvestment === "arbitrum";
-      const investmentChainId = isArbitrumInvestment ? "421614" : "84532"; // Arbitrum Sepolia or Base Sepolia
+      console.log("📝 User Intent:");
+      console.log(
+        `   Current: ${(TEST_CONFIG.bridgeAmount / 1e6).toFixed(
+          6
+        )} USDC on Base`
+      );
+      console.log(`   Target: Invest in Aave on Arbitrum`);
+      console.log(`   User: ${walletClient.account.address}`);
 
-      const requiredStateForOrchestration: RequiredState = {
-        chainId: investmentChainId,
-        moduleName: selectedModule || "AUTOSWAP",
-        configInputType: "investment",
-        requiredFields: [],
-        configTemplate: {},
-      };
-
-      // Create orchestration data
+      // EXACT MATCH TO TEST FILE - Create orchestration data
       const orchestrationData = await createOrchestrationData(
-        currentStateForOrchestration,
-        requiredStateForOrchestration,
-        walletClient.account.address,
-        "API_KEY_RANDOM"
+        currentStateForOrchestration, // currentState
+        requiredState, // requiredState
+        walletClient.account.address, // userAccount.address
+        TEST_CONFIG.apiKey, // TEST_CONFIG.apiKey
+        encodedData as `0x${string}` // encodedData as Hex
       );
 
       setOrchestrationData(orchestrationData);
-      console.log("Orchestration Data:", orchestrationData);
+      console.log("\n✅ Orchestration Created Successfully!");
+      console.log("--------------------------------------");
+      console.log(`📌 Request ID: ${orchestrationData.requestId}`);
+      console.log(`📍 Source Chain: ${orchestrationData.sourceChainId}`);
+      console.log(
+        `📍 Destination Chain: ${orchestrationData.destinationChainId}`
+      );
+      console.log(
+        `💼 Source Account: ${orchestrationData.accountAddressOnSourceChain}`
+      );
+      console.log(
+        `💼 Destination Account: ${orchestrationData.accountAddressOnDestinationChain}`
+      );
+      console.log(
+        `🔧 Source Modules: ${orchestrationData.sourceChainAccountModules.join(
+          ", "
+        )}`
+      );
+      console.log(
+        `🔧 Destination Modules: ${orchestrationData.destinationChainAccountModules.join(
+          ", "
+        )}`
+      );
     } catch (error) {
       console.error("Error creating orchestration data:", error);
     }
   };
 
   const handleTransferFunds = async () => {
-    if (!walletClient || !orchestrationData || !currentState) {
+    if (!walletClient || !orchestrationData || !currentState || !publicClient) {
       console.error("Missing required data for transfer");
       return;
     }
 
     setTransferLoading(true);
     try {
-      // Get the destination token address from orchestration data
-      const destinationTokenAddress = orchestrationData.destinationTokenAddress;
-      const amount = BigInt(parseFloat(currentState.amount) * 1e6); // Convert to wei
+      // EXACT MATCH TO TEST FILE - Transfer USDC to orchestration account
+      const bridgeAmount = parseFloat(currentState.amount) * 1e6;
+      console.log(
+        `\n💸 Transferring ${(bridgeAmount / 1e6).toFixed(6)} USDC to: ${
+          orchestrationData.accountAddressOnSourceChain
+        }`
+      );
 
-      console.log("Transferring to:", destinationTokenAddress);
-      console.log("Amount:", currentState.amount, "USDC");
+      const depositResult = await transferToOrchestrationAccount(
+        orchestrationData,
+        walletClient,
+        publicClient
+      );
 
-      // ERC20 Transfer function signature
-      const transferFunctionSignature = "0xa9059cbb";
+      if (!depositResult.success || !depositResult.txHash) {
+        throw new Error(
+          `Transfer failed: ${depositResult.error || "Unknown error"}`
+        );
+      }
 
-      // Encode the transfer parameters (to, amount)
-      const toAddress = destinationTokenAddress.slice(2).padStart(64, "0");
-      const amountHex = amount.toString(16).padStart(64, "0");
-      const data = transferFunctionSignature + toAddress + amountHex;
+      console.log(`✅ Transfer submitted: ${depositResult.txHash}`);
 
-      // Send the transaction
-      const hash = await walletClient.sendTransaction({
-        to: currentState.tokenAddress as `0x${string}`,
-        data: data as `0x${string}`,
-        value: BigInt(0),
+      // EXACT MATCH TO TEST FILE - Get transaction receipt
+      console.log("⏳ Waiting for transaction confirmation...");
+      const receipt = await publicClient.waitForTransactionReceipt({
+        hash: depositResult.txHash as `0x${string}`,
       });
 
-      console.log("Transfer transaction hash:", hash);
-      console.log("Transfer completed successfully!");
+      console.log(`✅ Transfer confirmed! Block: ${receipt.blockNumber}`);
+
+      // EXACT MATCH TO TEST FILE - Notify server of deposit
+      console.log(`\n🔔 Notifying server of deposit...`);
+      console.log(`   Request ID: ${orchestrationData.requestId}`);
+
+      await notifyDeposit({
+        requestId: orchestrationData.requestId,
+        transactionHash: receipt.transactionHash,
+        blockNumber: receipt.blockNumber.toString(),
+      });
+
+      console.log("✅ Server notified successfully!");
+
+      // EXACT MATCH TO TEST FILE - Check orchestration status
+      console.log("\n📊 Polling orchestration status...");
+      try {
+        await pollOrchestrationStatus({
+          requestId: orchestrationData.requestId,
+          interval: 3000,
+          maxAttempts: 100,
+          onStatusUpdate: (status) => {
+            console.log(`\n[Status Update] Status: ${status.status}`);
+            if (status.updated_at || status.created_at) {
+              console.log(
+                `   Updated: ${new Date(
+                  status.updated_at || status.created_at || Date.now()
+                ).toLocaleString()}`
+              );
+            }
+            if (status.error_message) {
+              console.log(`   Error: ${status.error_message}`);
+            }
+          },
+          onComplete: (status) => {
+            console.log("\n🎉 Orchestration completed successfully!");
+            console.log(`   Final Status: ${status.status}`);
+          },
+          onError: (error) => {
+            console.log(`\n❌ Orchestration error: ${error.message}`);
+          },
+        });
+      } catch (error) {
+        console.log(`\n⚠️  Status polling completed or timed out`);
+        if (error instanceof Error) {
+          console.log(`   ${error.message}`);
+        }
+      }
 
       // Move to next step or show success
       nextStep();
@@ -636,20 +794,28 @@ export default function Home() {
                       </p>
                       <div className="space-y-2 text-xs">
                         <p>
-                          <strong>Destination Token Address:</strong>{" "}
-                          {orchestrationData.destinationTokenAddress}
-                        </p>
-                        <p>
                           <strong>Request ID:</strong>{" "}
                           {orchestrationData.requestId}
                         </p>
                         <p>
-                          <strong>Source Chain Owner:</strong>{" "}
-                          {orchestrationData.sourceChainOwner}
+                          <strong>Source Chain Account:</strong>{" "}
+                          {orchestrationData.accountAddressOnSourceChain}
                         </p>
                         <p>
-                          <strong>Destination Chain Owner:</strong>{" "}
-                          {orchestrationData.destinationChainOwner}
+                          <strong>Destination Chain Account:</strong>{" "}
+                          {orchestrationData.accountAddressOnDestinationChain}
+                        </p>
+                        <p>
+                          <strong>Source Chain:</strong>{" "}
+                          {orchestrationData.sourceChainId}
+                        </p>
+                        <p>
+                          <strong>Destination Chain:</strong>{" "}
+                          {orchestrationData.destinationChainId}
+                        </p>
+                        <p>
+                          <strong>Destination Token Address:</strong>{" "}
+                          {orchestrationData.destinationTokenAddress}
                         </p>
                       </div>
                     </div>
