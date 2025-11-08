@@ -180,7 +180,7 @@ export default function InvestmentFlow() {
             <Image src="/unwallet.svg" alt="UnWallet" width={24} height={24} />
             Unwallet
           </div>
-          <ConnectButton />
+          <ConnectButton showBalance={false}/>
         </div>
       </header>
 
@@ -671,7 +671,7 @@ export default function InvestmentFlow() {
               </button>
               {!isConnected ? (
                 <div className="flex-1">
-                  <ConnectButton />
+                  <ConnectButton accountStatus="address" chainStatus="name" showBalance={false}/>
                 </div>
               ) : (
                 <button

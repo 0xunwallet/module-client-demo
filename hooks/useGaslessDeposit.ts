@@ -53,19 +53,16 @@ export function useGaslessDeposit({
   ) => {
     // Use override if provided, otherwise use state
     const dataToUse = orchestrationDataOverride ?? orchestrationData;
-    
-    if (
-      !walletClient ||
-      !dataToUse ||
-      !currentState ||
-      !publicClient
-    ) {
+
+    if (!walletClient || !dataToUse || !currentState || !publicClient) {
       const missing = [];
       if (!walletClient) missing.push("walletClient");
       if (!dataToUse) missing.push("orchestrationData");
       if (!currentState) missing.push("currentState");
       if (!publicClient) missing.push("publicClient");
-      console.error(`Missing required data for gasless deposit: ${missing.join(", ")}`);
+      console.error(
+        `Missing required data for gasless deposit: ${missing.join(", ")}`
+      );
       setError(null); // Don't show error to user
       return;
     }
@@ -81,7 +78,8 @@ export function useGaslessDeposit({
       const NETWORKS = {
         baseSepolia: {
           contracts: {
-            usdcToken: "0x036CbD53842c5426634e7929541eC2318f3dCF7e" as `0x${string}`,
+            usdcToken:
+              "0x036CbD53842c5426634e7929541eC2318f3dCF7e" as `0x${string}`,
           },
         },
       };
@@ -96,11 +94,11 @@ export function useGaslessDeposit({
       console.log(
         `Amount: ${(Number(TEST_CONFIG.bridgeAmount) / 1e6).toFixed(6)} USDC`
       );
-      console.log(
-        `Smart Account: ${dataToUse.accountAddressOnSourceChain}`
-      );
+      console.log(`Smart Account: ${dataToUse.accountAddressOnSourceChain}`);
       console.log("\nSigning EIP-3009 authorization (GASLESS!)...");
-      console.log(`   From: ${walletClient.account?.address} (main wallet with USDC)`);
+      console.log(
+        `   From: ${walletClient.account?.address} (main wallet with USDC)`
+      );
       console.log(
         `   To: ${dataToUse.accountAddressOnSourceChain} (smart account)`
       );
@@ -130,9 +128,13 @@ export function useGaslessDeposit({
       console.log(
         `   Authorization From: ${gaslessResult.signedAuthorization.from}`
       );
-      console.log(`   Authorization To: ${gaslessResult.signedAuthorization.to}`);
       console.log(
-        `   Authorization Value: ${(Number(gaslessResult.signedAuthorization.value) / 1e6).toFixed(6)} USDC`
+        `   Authorization To: ${gaslessResult.signedAuthorization.to}`
+      );
+      console.log(
+        `   Authorization Value: ${(
+          Number(gaslessResult.signedAuthorization.value) / 1e6
+        ).toFixed(6)} USDC`
       );
       console.log(
         `   Authorization Nonce: ${gaslessResult.signedAuthorization.nonce}`
@@ -164,9 +166,7 @@ export function useGaslessDeposit({
       );
 
       // EXACT MATCH TO TEST FILE - MONITOR ORCHESTRATION STATUS
-      console.log(
-        "\n===== 5. MONITOR ORCHESTRATION STATUS (using SDK) ====="
-      );
+      console.log("\n===== 5. MONITOR ORCHESTRATION STATUS (using SDK) =====");
       console.log("⏳ Server will now:");
       console.log("   1. Execute Multicall3 batch:");
       console.log(
@@ -232,4 +232,3 @@ export function useGaslessDeposit({
     reset,
   };
 }
-

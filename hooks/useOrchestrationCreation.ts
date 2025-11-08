@@ -5,10 +5,7 @@ import {
   encodeAutoEarnModuleData,
   createAutoEarnConfig,
 } from "unwallet";
-import type {
-  CurrentState,
-  OrchestrationData,
-} from "unwallet";
+import type { CurrentState, OrchestrationData } from "unwallet";
 import { formatError } from "@/lib/error-utils";
 
 interface UseOrchestrationCreationParams {
@@ -51,13 +48,16 @@ export function useOrchestrationCreation({
       const NETWORKS = {
         baseSepolia: {
           contracts: {
-            usdcToken: "0x036CbD53842c5426634e7929541eC2318f3dCF7e" as `0x${string}`,
+            usdcToken:
+              "0x036CbD53842c5426634e7929541eC2318f3dCF7e" as `0x${string}`,
           },
         },
         arbitrumSepolia: {
           contracts: {
-            usdcToken: "0x75faf114eafb1bdbe2f0316df893fd58ce46aa4d" as `0x${string}`,
-            aavePool: "0xBfC91D59fdAA134A4ED45f7B584cAf96D7792Eff" as `0x${string}`,
+            usdcToken:
+              "0x75faf114eafb1bdbe2f0316df893fd58ce46aa4d" as `0x${string}`,
+            aavePool:
+              "0xBfC91D59fdAA134A4ED45f7B584cAf96D7792Eff" as `0x${string}`,
           },
         },
       };
@@ -110,7 +110,9 @@ export function useOrchestrationCreation({
 
       console.log("📝 User Intent:");
       console.log(
-        `   Current: ${(TEST_CONFIG.bridgeAmount / 1e6).toFixed(6)} USDC on Base`
+        `   Current: ${(TEST_CONFIG.bridgeAmount / 1e6).toFixed(
+          6
+        )} USDC on Base`
       );
       console.log(`   Target: Invest in Aave on Arbitrum`);
       console.log(`   User: ${ownerAddress}`);
@@ -130,11 +132,23 @@ export function useOrchestrationCreation({
       console.log(`📌 Request ID: ${orchestration.requestId}`);
       console.log(`📍 Source Chain: ${orchestration.sourceChainId}`);
       console.log(`📍 Destination Chain: ${orchestration.destinationChainId}`);
-      console.log(`💼 Source Account: ${orchestration.accountAddressOnSourceChain}`);
-      console.log(`💼 Destination Account: ${orchestration.accountAddressOnDestinationChain}`);
-      console.log(`🔧 Source Modules: ${orchestration.sourceChainAccountModules.join(", ")}`);
-      console.log(`🔧 Destination Modules: ${orchestration.destinationChainAccountModules.join(", ")}`);
-      
+      console.log(
+        `💼 Source Account: ${orchestration.accountAddressOnSourceChain}`
+      );
+      console.log(
+        `💼 Destination Account: ${orchestration.accountAddressOnDestinationChain}`
+      );
+      console.log(
+        `🔧 Source Modules: ${orchestration.sourceChainAccountModules.join(
+          ", "
+        )}`
+      );
+      console.log(
+        `🔧 Destination Modules: ${orchestration.destinationChainAccountModules.join(
+          ", "
+        )}`
+      );
+
       return orchestration;
     } catch (err) {
       const errorMessage = formatError(err);
@@ -160,4 +174,3 @@ export function useOrchestrationCreation({
     reset,
   };
 }
-
