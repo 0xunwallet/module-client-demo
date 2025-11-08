@@ -14,18 +14,19 @@ import { useState } from "react";
 import {
   getRequiredState,
   createOrchestrationData,
-  notifyDeposit,
+  notifyDepositGasless,
   pollOrchestrationStatus,
-  transferToOrchestrationAccount,
-  buildAutoEarnModule,
+  depositGasless,
   encodeAutoEarnModuleData,
   createAutoEarnConfig,
+  TransferType,
 } from "unwallet";
 import type {
   ModuleName,
   RequiredStateData,
   CurrentState,
   OrchestrationData,
+  GaslessDepositResult,
 } from "unwallet";
 import { Input } from "@/components/ui/input";
 import { useWalletClient, usePublicClient } from "wagmi";
@@ -211,8 +212,12 @@ export default function Home() {
       // EXACT MATCH TO TEST FILE - Test configuration
       const TEST_CONFIG = {
         bridgeAmount: parseFloat(currentState.amount) * 1e6, // parseUnits equivalent
-        apiUrl: process.env.NEXT_PUBLIC_SERVER_URL || "https://tee.wall8.xyz",
-        apiKey: process.env.NEXT_PUBLIC_API_KEY || "test-api-orchestration",
+        apiUrl:
+          process.env.NEXT_PUBLIC_SERVER_URL ||
+          process.env.NEXT_PUBLIC_TEST_SERVER_URL ||
+          "https://tee.wall8.xyz",
+        apiKey:
+          process.env.NEXT_PUBLIC_API_KEY || "test-gasless-deposit-eip3009", // Match test file
       };
 
       // EXACT MATCH TO TEST FILE - Get required state for AutoEarn module
@@ -229,42 +234,17 @@ export default function Home() {
       console.log(`   Module Address: ${requiredState.moduleAddress}`);
       console.log(`   Config Input Type: ${requiredState.configInputType}`);
 
-      // EXACT MATCH TO TEST FILE - Build AutoEarn module
-      let encodedData: string;
-
-      try {
-        console.log("🔧 Building AutoEarn module using server API...");
-        const autoEarnModule = await buildAutoEarnModule(
-          {
-            chainId: 421614, // arbitrumSepolia.id
-            tokenAddress: NETWORKS.arbitrumSepolia.contracts.usdcToken,
-            // vaultAddress is optional - server uses default Aave pool
-          },
-          {
-            baseUrl: TEST_CONFIG.apiUrl,
-          }
-        );
-        encodedData = autoEarnModule.data;
-        console.log(
-          `✅ AutoEarn module built via server API: ${autoEarnModule.address}`
-        );
-      } catch (error) {
-        console.log(
-          "⚠️  Server API not available, using client-side encoding..."
-        );
-        console.log(
-          `   Error: ${error instanceof Error ? error.message : String(error)}`
-        );
-        const autoEarnConfig = createAutoEarnConfig(
-          421614, // arbitrumSepolia.id
-          NETWORKS.arbitrumSepolia.contracts.usdcToken,
-          NETWORKS.arbitrumSepolia.contracts.aavePool
-        );
-        encodedData = encodeAutoEarnModuleData([autoEarnConfig]);
-        console.log(
-          `✅ AutoEarn module encoded client-side: ${requiredState.moduleAddress}`
-        );
-      }
+      // EXACT MATCH TO TEST FILE - Encode AutoEarn module data using SDK helper functions
+      console.log("🔧 Encoding AutoEarn module configuration...");
+      const autoEarnConfig = createAutoEarnConfig(
+        421614, // Arbitrum Sepolia chain ID
+        NETWORKS.arbitrumSepolia.contracts.usdcToken,
+        NETWORKS.arbitrumSepolia.contracts.aavePool
+      );
+      const encodedData = encodeAutoEarnModuleData([autoEarnConfig]);
+      console.log(
+        `✅ Encoded AutoEarn config for chain ${autoEarnConfig.chainId}`
+      );
 
       // EXACT MATCH TO TEST FILE - Create orchestration request
       console.log("\n🎯 Creating orchestration request...");
@@ -330,57 +310,118 @@ export default function Home() {
 
     setTransferLoading(true);
     try {
-      // EXACT MATCH TO TEST FILE - Transfer USDC to orchestration account
-      const bridgeAmount = parseFloat(currentState.amount) * 1e6;
+      // EXACT MATCH TO TEST FILE - Network configurations
+      const NETWORKS = {
+        baseSepolia: {
+          contracts: {
+            usdcToken:
+              "0x036CbD53842c5426634e7929541eC2318f3dCF7e" as `0x${string}`,
+          },
+        },
+      };
+
+      // EXACT MATCH TO TEST FILE - Test configuration
+      const TEST_CONFIG = {
+        bridgeAmount: BigInt(parseFloat(currentState.amount) * 1e6),
+      };
+
+      // EXACT MATCH TO TEST FILE - GASLESS DEPOSIT WITH EIP-3009
+      console.log("\n===== 3. GASLESS DEPOSIT WITH EIP-3009 (using SDK) =====");
       console.log(
-        `\n💸 Transferring ${(bridgeAmount / 1e6).toFixed(6)} USDC to: ${
-          orchestrationData.accountAddressOnSourceChain
-        }`
+        `Amount: ${(Number(TEST_CONFIG.bridgeAmount) / 1e6).toFixed(6)} USDC`
+      );
+      console.log(
+        `Smart Account: ${orchestrationData.accountAddressOnSourceChain}`
+      );
+      console.log("\nSigning EIP-3009 authorization (GASLESS!)...");
+      console.log(
+        `   From: ${walletClient.account.address} (main wallet with USDC)`
+      );
+      console.log(
+        `   To: ${orchestrationData.accountAddressOnSourceChain} (smart account)`
+      );
+      console.log(`   ⚠️  Signing is OFF-CHAIN - NO GAS NEEDED!`);
+
+      // EXACT MATCH TO TEST FILE - Use SDK depositGasless function
+      const gaslessResult: GaslessDepositResult = await depositGasless(
+        walletClient.account.address, // from - main wallet that owns USDC
+        orchestrationData.accountAddressOnSourceChain, // to - smart account address
+        NETWORKS.baseSepolia.contracts.usdcToken, // token address
+        TEST_CONFIG.bridgeAmount, // amount
+        walletClient, // wallet client (signs authorization, NO ETH needed for signing!)
+        publicClient // public client
       );
 
-      const depositResult = await transferToOrchestrationAccount(
-        orchestrationData,
-        walletClient,
-        publicClient
-      );
-
-      if (!depositResult.success || !depositResult.txHash) {
+      if (!gaslessResult.success || !gaslessResult.signedAuthorization) {
         throw new Error(
-          `Transfer failed: ${depositResult.error || "Unknown error"}`
+          `Gasless deposit failed: ${gaslessResult.error || "Unknown error"}`
         );
       }
 
-      console.log(`✅ Transfer submitted: ${depositResult.txHash}`);
+      console.log("\n✅ EIP-3009 authorization signed successfully (gasless)!");
+      console.log(
+        `   Authorization From: ${gaslessResult.signedAuthorization.from}`
+      );
+      console.log(
+        `   Authorization To: ${gaslessResult.signedAuthorization.to}`
+      );
+      console.log(
+        `   Authorization Value: ${(
+          Number(gaslessResult.signedAuthorization.value) / 1e6
+        ).toFixed(6)} USDC`
+      );
+      console.log(
+        `   Authorization Nonce: ${gaslessResult.signedAuthorization.nonce}`
+      );
 
-      // EXACT MATCH TO TEST FILE - Get transaction receipt
-      console.log("⏳ Waiting for transaction confirmation...");
-      const receipt = await publicClient.waitForTransactionReceipt({
-        hash: depositResult.txHash as `0x${string}`,
-      });
-
-      console.log(`✅ Transfer confirmed! Block: ${receipt.blockNumber}`);
-
-      // EXACT MATCH TO TEST FILE - Notify server of deposit
-      console.log(`\n🔔 Notifying server of deposit...`);
+      // EXACT MATCH TO TEST FILE - NOTIFY SERVER WITH SIGNED AUTHORIZATION
+      console.log(
+        "\n===== 4. NOTIFY SERVER WITH SIGNED AUTHORIZATION (using SDK) ====="
+      );
+      console.log(
+        `   Transfer Type: TRANSFER_WITH_AUTHORIZATION (${TransferType.TRANSFER_WITH_AUTHORIZATION})`
+      );
       console.log(`   Request ID: ${orchestrationData.requestId}`);
+      console.log(
+        `   ⚠️  Note: No transaction hash needed - signing was off-chain!`
+      );
 
-      await notifyDeposit({
-        requestId: orchestrationData.requestId,
-        transactionHash: receipt.transactionHash,
-        blockNumber: receipt.blockNumber.toString(),
-      });
+      // EXACT MATCH TO TEST FILE - Use SDK notifyDepositGasless function
+      await notifyDepositGasless(
+        orchestrationData.requestId,
+        "0x" as `0x${string}`, // No transaction hash - signing was off-chain
+        "0", // No block number - signing was off-chain
+        gaslessResult.signedAuthorization
+      );
 
       console.log("✅ Server notified successfully!");
+      console.log(
+        "   Server will execute transferWithAuthorization in Multicall3 batch"
+      );
 
-      // EXACT MATCH TO TEST FILE - Check orchestration status
-      console.log("\n📊 Polling orchestration status...");
+      // EXACT MATCH TO TEST FILE - MONITOR ORCHESTRATION STATUS
+      console.log("\n===== 5. MONITOR ORCHESTRATION STATUS (using SDK) =====");
+      console.log("⏳ Server will now:");
+      console.log("   1. Execute Multicall3 batch:");
+      console.log(
+        "      - transferWithAuthorization (move from user wallet to smart account)"
+      );
+      console.log("      - Deploy smart account on source chain");
+      console.log("      - Execute bridge operation");
+      console.log("   2. Monitor destination chain for funds");
+      console.log("   3. Deploy smart account on destination chain");
+      console.log("   4. Execute AutoEarn module");
+      console.log("\n⏳ Polling orchestration status...");
+      console.log("   (This may take 2-3 minutes for bridge transfer)");
+      console.log("   ✅ Completely gasless - user only signed off-chain!");
+
       try {
         await pollOrchestrationStatus({
           requestId: orchestrationData.requestId,
-          interval: 3000,
-          maxAttempts: 100,
+          interval: 5000, // 5 seconds (match test)
+          maxAttempts: 60, // 5 minutes (match test)
           onStatusUpdate: (status) => {
-            console.log(`\n[Status Update] Status: ${status.status}`);
+            console.log(`\n[Status Update] ${status.status}`);
             if (status.updated_at || status.created_at) {
               console.log(
                 `   Updated: ${new Date(
