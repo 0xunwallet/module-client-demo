@@ -25,7 +25,13 @@ interface UseGaslessDepositParams {
 interface UseGaslessDepositReturn {
   loading: boolean;
   error: string | null;
-  deposit: (orchestrationDataOverride?: OrchestrationData | null) => Promise<void>;
+  deposit: (
+    orchestrationDataOverride?: OrchestrationData | null,
+    callbacks?: {
+      onStatusUpdate?: (status: OrchestrationStatus) => void;
+      onComplete?: (status: OrchestrationStatus) => void;
+    }
+  ) => Promise<void>;
   reset: () => void;
 }
 
@@ -38,7 +44,13 @@ export function useGaslessDeposit({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const deposit = async (orchestrationDataOverride?: OrchestrationData | null) => {
+  const deposit = async (
+    orchestrationDataOverride?: OrchestrationData | null,
+    callbacks?: {
+      onStatusUpdate?: (status: OrchestrationStatus) => void;
+      onComplete?: (status: OrchestrationStatus) => void;
+    }
+  ) => {
     // Use override if provided, otherwise use state
     const dataToUse = orchestrationDataOverride ?? orchestrationData;
     
@@ -181,10 +193,14 @@ export function useGaslessDeposit({
           if (status.error_message) {
             console.log(`   Error: ${status.error_message}`);
           }
+          // Call user-provided callback
+          callbacks?.onStatusUpdate?.(status);
         },
         onComplete: (status: OrchestrationStatus) => {
           console.log("\n🎉 Orchestration completed successfully!");
           console.log(`   Final Status: ${status.status}`);
+          // Call user-provided callback
+          callbacks?.onComplete?.(status);
         },
         onError: (error: Error) => {
           console.log(`\n❌ Orchestration error: ${error.message}`);
