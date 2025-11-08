@@ -10,7 +10,7 @@ import type {
   GaslessDepositResult,
   OrchestrationStatus,
 } from "unwallet";
-import type { PublicClient } from "viem";
+import type { PublicClient, WalletClient } from "viem";
 import { formatError } from "@/lib/error-utils";
 
 interface UseGaslessDepositParams {
@@ -18,7 +18,7 @@ interface UseGaslessDepositParams {
   currentState: {
     amount: string;
   } | null;
-  walletClient: WagmiWalletClient | undefined;
+  walletClient: WalletClient | undefined;
   publicClient: PublicClient | null | undefined;
 }
 
@@ -100,13 +100,17 @@ export function useGaslessDeposit({
         `Smart Account: ${dataToUse.accountAddressOnSourceChain}`
       );
       console.log("\nSigning EIP-3009 authorization (GASLESS!)...");
-      console.log(`   From: ${walletClient.account.address} (main wallet with USDC)`);
+      console.log(`   From: ${walletClient.account?.address} (main wallet with USDC)`);
       console.log(
         `   To: ${dataToUse.accountAddressOnSourceChain} (smart account)`
       );
       console.log(`   ⚠️  Signing is OFF-CHAIN - NO GAS NEEDED!`);
 
       // EXACT MATCH TO TEST FILE - Use SDK depositGasless function
+      if (!walletClient.account?.address) {
+        throw new Error("Wallet account address is not available");
+      }
+
       const gaslessResult: GaslessDepositResult = await depositGasless(
         walletClient.account.address,
         dataToUse.accountAddressOnSourceChain,

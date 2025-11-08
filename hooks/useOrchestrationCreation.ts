@@ -8,7 +8,6 @@ import {
 import type {
   CurrentState,
   OrchestrationData,
-  RequiredStateData,
 } from "unwallet";
 import { formatError } from "@/lib/error-utils";
 
@@ -38,10 +37,10 @@ export function useOrchestrationCreation({
   const [orchestrationData, setOrchestrationData] =
     useState<OrchestrationData | null>(null);
 
-  const createOrchestration = async () => {
+  const createOrchestration = async (): Promise<OrchestrationData | null> => {
     if (!currentState || !ownerAddress) {
       setError("Missing required data for orchestration creation");
-      return;
+      return null;
     }
 
     setLoading(true);
