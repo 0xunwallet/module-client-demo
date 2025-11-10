@@ -7,7 +7,7 @@ import {
 } from "@rainbow-me/rainbowkit";
 import { WagmiProvider } from "wagmi";
 import { QueryClientProvider, QueryClient } from "@tanstack/react-query";
-import { BASE_CHAIN } from "@/lib/chain-constants";
+import { BASE_CHAIN, ARBITRUM_CHAIN } from "@/lib/chain-constants";
 import { ThemeProvider } from "@/components/theme-provider";
 
 const queryClient = new QueryClient();
@@ -15,7 +15,7 @@ const queryClient = new QueryClient();
 const config = getDefaultConfig({
   appName: "Stealth Wallet",
   projectId: process.env.NEXT_PUBLIC_REOWN_APP_ID || "wallet-app-id",
-  chains: [BASE_CHAIN],
+  chains: [BASE_CHAIN, ARBITRUM_CHAIN],
   ssr: true,
 });
 
@@ -41,7 +41,7 @@ export const RainbowkitProvider = ({
               // borderRadius: "small",
               // fontStack: "system",
               // overlayBlur: "small",
-              borderRadius: 'none',
+              borderRadius: "none",
             })}
             modalSize="compact"
           >

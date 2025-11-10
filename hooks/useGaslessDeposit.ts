@@ -12,10 +12,12 @@ import type {
 } from "unwallet";
 import type { PublicClient, WalletClient } from "viem";
 import { formatError } from "@/lib/error-utils";
+import { getNetworkByChainId } from "@/lib/chain-constants";
 
 interface UseGaslessDepositParams {
   orchestrationData: OrchestrationData | null;
   currentState: {
+    chainId?: string;
     amount: string;
   } | null;
   walletClient: WalletClient | undefined;
@@ -74,22 +76,28 @@ export function useGaslessDeposit({
     setError(null);
 
     try {
-      // EXACT MATCH TO TEST FILE - Network configurations
-      const NETWORKS = {
-        baseSepolia: {
-          contracts: {
-            usdcToken:
-              "0x036CbD53842c5426634e7929541eC2318f3dCF7e" as `0x${string}`,
-          },
-        },
-      };
+      // Determine source chain dynamically from orchestrationData or currentState
+      const sourceChainId = dataToUse?.sourceChainId
+        ? parseInt(String(dataToUse.sourceChainId))
+        : currentState?.chainId
+        ? parseInt(currentState.chainId)
+        : 84532; // fallback to Base Sepolia
 
-      // EXACT MATCH TO TEST FILE - Test configuration
+      const sourceNetwork = getNetworkByChainId(sourceChainId);
+
+      console.log("\n🌉 Gasless Deposit Configuration");
+      console.log("--------------------------------");
+      console.log(
+        `📍 Source Chain: ${sourceNetwork.name} (${sourceNetwork.chainId})`
+      );
+      console.log(`📍 Source Token: ${sourceNetwork.contracts.usdcToken}`);
+
+      // Test configuration
       const TEST_CONFIG = {
         bridgeAmount: BigInt(parseFloat(currentState.amount) * 1e6),
       };
 
-      // EXACT MATCH TO TEST FILE - GASLESS DEPOSIT WITH EIP-3009
+      // GASLESS DEPOSIT WITH EIP-3009
       console.log("\n===== 3. GASLESS DEPOSIT WITH EIP-3009 (using SDK) =====");
       console.log(
         `Amount: ${(Number(TEST_CONFIG.bridgeAmount) / 1e6).toFixed(6)} USDC`
@@ -104,7 +112,7 @@ export function useGaslessDeposit({
       );
       console.log(`   ⚠️  Signing is OFF-CHAIN - NO GAS NEEDED!`);
 
-      // EXACT MATCH TO TEST FILE - Use SDK depositGasless function
+      // Use SDK depositGasless function with dynamic source chain token
       if (!walletClient.account?.address) {
         throw new Error("Wallet account address is not available");
       }
@@ -112,7 +120,7 @@ export function useGaslessDeposit({
       const gaslessResult: GaslessDepositResult = await depositGasless(
         walletClient.account.address,
         dataToUse.accountAddressOnSourceChain,
-        NETWORKS.baseSepolia.contracts.usdcToken,
+        sourceNetwork.contracts.usdcToken, // ✅ Dynamic source chain token
         TEST_CONFIG.bridgeAmount,
         walletClient,
         viemPublicClient

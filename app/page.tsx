@@ -1,13 +1,23 @@
 "use client";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { ModuleName } from "unwallet";
-import { useWalletClient, usePublicClient, useAccount } from "wagmi";
+import {
+  useWalletClient,
+  usePublicClient,
+  useAccount,
+  useSwitchChain,
+} from "wagmi";
 import { useModuleSelection } from "@/hooks/useModuleSelection";
 import { useOrchestrationCreation } from "@/hooks/useOrchestrationCreation";
 import { useGaslessDeposit } from "@/hooks/useGaslessDeposit";
 import { useUSDCBalance } from "@/hooks/useUSDCBalance";
 import { getUserFriendlyError } from "@/lib/error-utils";
+import {
+  BASE_CHAIN,
+  ARBITRUM_CHAIN,
+  getNetworkByName,
+} from "@/lib/chain-constants";
 import { Check, ArrowRight, Loader2 } from "lucide-react";
 import Image from "next/image";
 import {
@@ -37,7 +47,8 @@ const LOGOS = {
 export default function InvestmentFlow() {
   const { data: walletClient } = useWalletClient();
   const publicClient = usePublicClient();
-  const { isConnected } = useAccount();
+  const { isConnected, chainId } = useAccount();
+  const { switchChain } = useSwitchChain();
   const [step, setStep] = useState(1);
   const [module, setModule] = useState<ModuleName | null>(null);
   const [destinationChain, setDestinationChain] = useState<
@@ -53,6 +64,7 @@ export default function InvestmentFlow() {
   const [destinationAccountAddress, setDestinationAccountAddress] = useState<
     string | null
   >(null);
+  const [switchingChain, setSwitchingChain] = useState(false);
 
   // Module Selection Hook
   const {
@@ -74,6 +86,10 @@ export default function InvestmentFlow() {
         }
       : null;
 
+  // Prepare destination chain ID
+  const destinationChainId =
+    destinationChain === "arbitrum" ? "421614" : "84532";
+
   // Orchestration Creation Hook
   const {
     loading: orchestrationLoading,
@@ -83,6 +99,7 @@ export default function InvestmentFlow() {
   } = useOrchestrationCreation({
     currentState,
     ownerAddress: walletClient?.account?.address || "",
+    destinationChainId, // ✅ Pass destination chain
   });
 
   // Gasless Deposit Hook
@@ -108,7 +125,14 @@ export default function InvestmentFlow() {
   const handleModuleSelect = async (moduleName: ModuleName) => {
     setModule(moduleName);
     try {
-      await selectModule(moduleName);
+      // If destination chain is already selected, pass it to module selection
+      const destChainId =
+        destinationChain === "arbitrum"
+          ? 421614
+          : destinationChain === "base"
+          ? 84532
+          : undefined;
+      await selectModule(moduleName, destChainId);
       // Move to next step after successful selection
       setStep(2);
     } catch (error) {
@@ -116,6 +140,40 @@ export default function InvestmentFlow() {
       console.error("Error selecting module:", error);
     }
   };
+
+  // Handle source chain selection with wallet chain switching
+  const handleSourceChainSelect = async (chain: "arbitrum" | "base") => {
+    setSourceChain(chain);
+
+    // Switch wallet chain if connected
+    if (isConnected && switchChain) {
+      const targetChainId =
+        chain === "arbitrum" ? ARBITRUM_CHAIN.id : BASE_CHAIN.id;
+
+      // Only switch if not already on the target chain
+      if (chainId !== targetChainId) {
+        try {
+          setSwitchingChain(true);
+          await switchChain({ chainId: targetChainId });
+        } catch (error) {
+          console.error("Error switching chain:", error);
+          // Don't block the flow if chain switch fails
+        } finally {
+          setSwitchingChain(false);
+        }
+      }
+    }
+  };
+
+  // Update module selection when destination chain changes (if module is already selected)
+  useEffect(() => {
+    if (module && destinationChain) {
+      const destChainId = destinationChain === "arbitrum" ? 421614 : 84532;
+      selectModule(module, destChainId).catch((error) => {
+        console.error("Error updating module selection:", error);
+      });
+    }
+  }, [destinationChain, module, selectModule]);
 
   const handleExecute = async () => {
     if (!walletClient || !currentState) {
@@ -180,7 +238,7 @@ export default function InvestmentFlow() {
             <Image src="/unwallet.svg" alt="UnWallet" width={24} height={24} />
             Unwallet
           </div>
-          <ConnectButton showBalance={false}/>
+          <ConnectButton showBalance={false} />
         </div>
       </header>
 
@@ -306,7 +364,8 @@ export default function InvestmentFlow() {
                 Select destination
               </h2>
               <p className="text-muted-foreground">
-                Choose where to deploy your investment
+                Choose where to deploy your investment (same-chain and
+                cross-chain supported)
               </p>
             </div>
             <div className="space-y-3">
@@ -405,7 +464,8 @@ export default function InvestmentFlow() {
                 Select source
               </h2>
               <p className="text-muted-foreground">
-                Choose which chain to deploy funds from
+                Choose which chain to deploy funds from (can be same as
+                destination)
               </p>
             </div>
             {!isConnected && (
@@ -422,14 +482,25 @@ export default function InvestmentFlow() {
                 </p>
               </div>
             )}
+            {switchingChain && (
+              <div className="p-3 bg-muted/50 border border-muted rounded-lg">
+                <div className="flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <p className="text-sm text-muted-foreground">
+                    Switching wallet chain...
+                  </p>
+                </div>
+              </div>
+            )}
             <div className="space-y-3">
               <button
-                onClick={() => setSourceChain("arbitrum")}
+                onClick={() => handleSourceChainSelect("arbitrum")}
+                disabled={switchingChain}
                 className={`w-full p-5 rounded-lg border text-left transition-all ${
                   sourceChain === "arbitrum"
                     ? "border-foreground bg-accent"
                     : "border-border hover:border-foreground/50"
-                }`}
+                } disabled:opacity-50 disabled:cursor-not-allowed`}
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
@@ -466,12 +537,13 @@ export default function InvestmentFlow() {
                 </div>
               </button>
               <button
-                onClick={() => setSourceChain("base")}
+                onClick={() => handleSourceChainSelect("base")}
+                disabled={switchingChain}
                 className={`w-full p-5 rounded-lg border text-left transition-all ${
                   sourceChain === "base"
                     ? "border-foreground bg-accent"
                     : "border-border hover:border-foreground/50"
-                }`}
+                } disabled:opacity-50 disabled:cursor-not-allowed`}
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
@@ -671,7 +743,11 @@ export default function InvestmentFlow() {
               </button>
               {!isConnected ? (
                 <div className="flex-1">
-                  <ConnectButton accountStatus="address" chainStatus="name" showBalance={false}/>
+                  <ConnectButton
+                    accountStatus="address"
+                    chainStatus="name"
+                    showBalance={false}
+                  />
                 </div>
               ) : (
                 <button
@@ -767,7 +843,8 @@ export default function InvestmentFlow() {
 
               {/* Success Message with Account Address */}
               {orchestrationStatus?.status === "COMPLETED" &&
-                destinationAccountAddress && (
+                destinationAccountAddress &&
+                destinationChain && (
                   <div className="space-y-3 rounded-lg border bg-muted/50 p-4">
                     <div className="flex items-center gap-2">
                       <Check className="h-5 w-5 text-green-600 dark:text-green-400" />
@@ -786,15 +863,24 @@ export default function InvestmentFlow() {
                           </span>
                         </div>
                       </div>
-                      <a
-                        href={`https://sepolia.arbiscan.io/address/${destinationAccountAddress}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-2 text-sm text-primary hover:underline"
-                      >
-                        View on Arbiscan
-                        <ArrowRight className="h-4 w-4" />
-                      </a>
+                      {(() => {
+                        const destNetwork = getNetworkByName(destinationChain);
+                        const explorerName =
+                          destinationChain === "arbitrum"
+                            ? "Arbiscan"
+                            : "Basescan";
+                        return (
+                          <a
+                            href={`${destNetwork.explorerUrl}/address/${destinationAccountAddress}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-2 text-sm text-primary hover:underline"
+                          >
+                            View on {explorerName}
+                            <ArrowRight className="h-4 w-4" />
+                          </a>
+                        );
+                      })()}
                     </div>
                   </div>
                 )}

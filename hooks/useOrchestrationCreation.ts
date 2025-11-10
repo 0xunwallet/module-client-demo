@@ -7,6 +7,7 @@ import {
 } from "unwallet";
 import type { CurrentState, OrchestrationData } from "unwallet";
 import { formatError } from "@/lib/error-utils";
+import { getNetworkByChainId } from "@/lib/chain-constants";
 
 interface UseOrchestrationCreationParams {
   currentState: {
@@ -15,6 +16,7 @@ interface UseOrchestrationCreationParams {
     amount: string;
   } | null;
   ownerAddress: string;
+  destinationChainId: string; // ✅ NEW: Destination chain ID
 }
 
 interface UseOrchestrationCreationReturn {
@@ -28,6 +30,7 @@ interface UseOrchestrationCreationReturn {
 export function useOrchestrationCreation({
   currentState,
   ownerAddress,
+  destinationChainId,
 }: UseOrchestrationCreationParams): UseOrchestrationCreationReturn {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -35,7 +38,7 @@ export function useOrchestrationCreation({
     useState<OrchestrationData | null>(null);
 
   const createOrchestration = async (): Promise<OrchestrationData | null> => {
-    if (!currentState || !ownerAddress) {
+    if (!currentState || !ownerAddress || !destinationChainId) {
       setError("Missing required data for orchestration creation");
       return null;
     }
@@ -44,25 +47,23 @@ export function useOrchestrationCreation({
     setError(null);
 
     try {
-      // EXACT MATCH TO TEST FILE - Network configurations
-      const NETWORKS = {
-        baseSepolia: {
-          contracts: {
-            usdcToken:
-              "0x036CbD53842c5426634e7929541eC2318f3dCF7e" as `0x${string}`,
-          },
-        },
-        arbitrumSepolia: {
-          contracts: {
-            usdcToken:
-              "0x75faf114eafb1bdbe2f0316df893fd58ce46aa4d" as `0x${string}`,
-            aavePool:
-              "0xBfC91D59fdAA134A4ED45f7B584cAf96D7792Eff" as `0x${string}`,
-          },
-        },
-      };
+      // Determine source and destination networks dynamically (like test file)
+      const sourceChainId = parseInt(currentState.chainId);
+      const destChainId = parseInt(destinationChainId);
 
-      // EXACT MATCH TO TEST FILE - Test configuration
+      const sourceNetwork = getNetworkByChainId(sourceChainId);
+      const destNetwork = getNetworkByChainId(destChainId);
+
+      console.log("\n🌉 Bidirectional Flow Configuration");
+      console.log("-----------------------------------");
+      console.log(
+        `📍 Source Chain: ${sourceNetwork.name} (${sourceNetwork.chainId})`
+      );
+      console.log(
+        `📍 Destination Chain: ${destNetwork.name} (${destNetwork.chainId})`
+      );
+
+      // Test configuration
       const TEST_CONFIG = {
         bridgeAmount: parseFloat(currentState.amount) * 1e6,
         apiUrl:
@@ -73,11 +74,20 @@ export function useOrchestrationCreation({
           process.env.NEXT_PUBLIC_API_KEY || "test-gasless-deposit-eip3009",
       };
 
-      // EXACT MATCH TO TEST FILE - Get required state for AutoEarn module
+      // Get required state for AutoEarn module on destination chain
       console.log("\n📊 Getting Required State");
       console.log("--------------------------");
+      console.log(
+        `📊 Getting required state for AutoEarn module on ${destNetwork.name} (chainId: ${destNetwork.chainId})...`
+      );
+      type SupportedChainId = Parameters<
+        typeof getRequiredState
+      >[0]["sourceChainId"];
+
       const requiredState = await getRequiredState({
-        sourceChainId: 421614, // arbitrumSepolia.id
+        sourceChainId: String(
+          destNetwork.chainId
+        ) as unknown as SupportedChainId, // Note: parameter name is misleading - this is destination
         moduleName: "AUTOEARN",
       });
 
@@ -87,34 +97,36 @@ export function useOrchestrationCreation({
       console.log(`   Module Address: ${requiredState.moduleAddress}`);
       console.log(`   Config Input Type: ${requiredState.configInputType}`);
 
-      // EXACT MATCH TO TEST FILE - Encode AutoEarn module data
-      console.log("🔧 Encoding AutoEarn module configuration...");
+      // Encode AutoEarn module data for destination chain
+      console.log("\n🔧 Encoding AutoEarn module configuration...");
       const autoEarnConfig = createAutoEarnConfig(
-        421614, // Arbitrum Sepolia chain ID
-        NETWORKS.arbitrumSepolia.contracts.usdcToken,
-        NETWORKS.arbitrumSepolia.contracts.aavePool
+        destNetwork.chainId, // ✅ Destination chain ID
+        destNetwork.contracts.usdcToken, // ✅ Destination chain token
+        destNetwork.contracts.aavePool // ✅ Destination chain Aave pool
       );
       const encodedData = encodeAutoEarnModuleData([autoEarnConfig]);
       console.log(
         `✅ Encoded AutoEarn config for chain ${autoEarnConfig.chainId}`
       );
 
-      // EXACT MATCH TO TEST FILE - Create orchestration request
+      // Create orchestration request with source chain
       console.log("\n🎯 Creating orchestration request...");
       const currentStateForOrchestration: CurrentState = {
-        chainId: 84532, // baseSepolia.id
-        tokenAddress: NETWORKS.baseSepolia.contracts.usdcToken,
+        chainId: String(
+          sourceNetwork.chainId
+        ) as unknown as CurrentState["chainId"], // ✅ Source chain ID
+        tokenAddress: sourceNetwork.contracts.usdcToken, // ✅ Source chain token
         tokenAmount: TEST_CONFIG.bridgeAmount.toString(),
         ownerAddress: ownerAddress as `0x${string}`,
       };
 
       console.log("📝 User Intent:");
       console.log(
-        `   Current: ${(TEST_CONFIG.bridgeAmount / 1e6).toFixed(
-          6
-        )} USDC on Base`
+        `   Current: ${(TEST_CONFIG.bridgeAmount / 1e6).toFixed(6)} USDC on ${
+          sourceNetwork.name
+        }`
       );
-      console.log(`   Target: Invest in Aave on Arbitrum`);
+      console.log(`   Target: Invest in Aave on ${destNetwork.name}`);
       console.log(`   User: ${ownerAddress}`);
 
       // EXACT MATCH TO TEST FILE - Create orchestration data
