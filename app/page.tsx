@@ -105,7 +105,11 @@ export default function InvestmentFlow() {
     destinationChainId, // ✅ Pass destination chain
   });
 
-  // Gasless Deposit Hook
+  // Check if same-chain flow
+  const isSameChain =
+    sourceChain && destinationChain && sourceChain === destinationChain;
+
+  // Gasless Deposit Hook (used for both same-chain and cross-chain)
   const {
     loading: depositLoading,
     error: depositError,
@@ -314,7 +318,11 @@ export default function InvestmentFlow() {
               name: "depositGasless",
               params: `{
   from: walletClient.account.address,
-  to: orchestrationData.accountAddressOnSourceChain,
+  to: ${
+    sourceChain === destinationChain
+      ? "orchestrationData.accountAddressOnDestinationChain"
+      : "orchestrationData.accountAddressOnSourceChain"
+  },
   token: NETWORKS.${
     sourceChain === "arbitrum" ? "arbitrumSepolia" : "baseSepolia"
   }.contracts.usdcToken,
@@ -322,8 +330,11 @@ export default function InvestmentFlow() {
   walletClient: walletClient,
   publicClient: publicClient
 }`,
-              description:
-                "Called in performGaslessDeposit() - sign EIP-3009 authorization (OFF-CHAIN)",
+              description: `Called in performGaslessDeposit() - sign EIP-3009 authorization (OFF-CHAIN). ${
+                sourceChain === destinationChain
+                  ? "Same-chain: uses destination account"
+                  : "Cross-chain: uses source account"
+              }`,
             },
           ],
         };
@@ -496,6 +507,15 @@ export default function InvestmentFlow() {
                   Choose where to deploy your investment (same-chain and
                   cross-chain supported)
                 </p>
+                {sourceChain && (
+                  <div className="p-3 bg-muted/50 border border-muted rounded-lg">
+                    <p className="text-sm text-muted-foreground">
+                      {sourceChain === destinationChain
+                        ? "✓ Same-chain flow selected (no bridge needed)"
+                        : "Cross-chain flow selected (bridge required)"}
+                    </p>
+                  </div>
+                )}
               </div>
               <div className="space-y-3">
                 <button
@@ -601,6 +621,15 @@ export default function InvestmentFlow() {
                   Choose which chain to deploy funds from (can be same as
                   destination)
                 </p>
+                {destinationChain && (
+                  <div className="p-3 bg-muted/50 border border-muted rounded-lg">
+                    <p className="text-sm text-muted-foreground">
+                      {sourceChain === destinationChain
+                        ? "✓ Same-chain flow: Supply and earn on the same chain (no bridge)"
+                        : `Cross-chain flow: Bridge from ${sourceChain} to ${destinationChain}`}
+                    </p>
+                  </div>
+                )}
               </div>
               {!isConnected && (
                 <div className="p-3 bg-muted/50 border border-muted rounded-lg">
@@ -871,7 +900,7 @@ export default function InvestmentFlow() {
               </div>
               <div className="p-4 rounded-lg border bg-muted/50">
                 <p className="text-sm text-muted-foreground">
-                  Abstraction layer powered by Unwallet.
+                Abstraction layer powered by Unwallet.
                 </p>
               </div>
               {(orchestrationError || depositError) && (
@@ -1064,6 +1093,7 @@ export default function InvestmentFlow() {
                           </pre>
                           <p className="text-[10px] text-muted-foreground">
                             Notify server with signed authorization
+                            {isSameChain && " (Same-chain: no bridge needed)"}
                           </p>
                         </div>
 

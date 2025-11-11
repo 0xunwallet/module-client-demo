@@ -1,20 +1,18 @@
 import { useState } from "react";
 import {
-  depositGasless,
-  notifyDepositGasless,
+  transferToOrchestrationAccount,
+  notifyDeposit,
   pollOrchestrationStatus,
-  TransferType,
 } from "unwallet";
 import type {
   OrchestrationData,
-  GaslessDepositResult,
   OrchestrationStatus,
 } from "unwallet";
 import type { PublicClient, WalletClient } from "viem";
 import { formatError } from "@/lib/error-utils";
 import { getNetworkByChainId } from "@/lib/chain-constants";
 
-interface UseGaslessDepositParams {
+interface UseNormalDepositParams {
   orchestrationData: OrchestrationData | null;
   currentState: {
     chainId?: string;
@@ -24,7 +22,7 @@ interface UseGaslessDepositParams {
   publicClient: PublicClient | null | undefined;
 }
 
-interface UseGaslessDepositReturn {
+interface UseNormalDepositReturn {
   loading: boolean;
   error: string | null;
   deposit: (
@@ -37,12 +35,12 @@ interface UseGaslessDepositReturn {
   reset: () => void;
 }
 
-export function useGaslessDeposit({
+export function useNormalDeposit({
   orchestrationData,
   currentState,
   walletClient,
   publicClient,
-}: UseGaslessDepositParams): UseGaslessDepositReturn {
+}: UseNormalDepositParams): UseNormalDepositReturn {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -63,7 +61,7 @@ export function useGaslessDeposit({
       if (!currentState) missing.push("currentState");
       if (!publicClient) missing.push("publicClient");
       console.error(
-        `Missing required data for gasless deposit: ${missing.join(", ")}`
+        `Missing required data for normal deposit: ${missing.join(", ")}`
       );
       setError(null); // Don't show error to user
       return;
@@ -85,31 +83,16 @@ export function useGaslessDeposit({
 
       const sourceNetwork = getNetworkByChainId(sourceChainId);
       const isSameChain =
-        String(dataToUse.sourceChainId) ===
-        String(dataToUse.destinationChainId);
+        String(dataToUse.sourceChainId) === String(dataToUse.destinationChainId);
 
-      // For same-chain flows, use destination account address (as per test file)
-      // For cross-chain flows, use source account address
-      const targetAccountAddress = isSameChain
-        ? dataToUse.accountAddressOnDestinationChain
-        : dataToUse.accountAddressOnSourceChain;
-
-      console.log("\n🌉 Gasless Deposit Configuration");
+      console.log("\n💰 Normal Deposit Configuration");
       console.log("--------------------------------");
-      console.log(`📍 Chain: ${sourceNetwork.name} (${sourceNetwork.chainId})`);
+      console.log(
+        `📍 Chain: ${sourceNetwork.name} (${sourceNetwork.chainId})`
+      );
       console.log(`📍 Token: ${sourceNetwork.contracts.usdcToken}`);
       console.log(
         `📍 Type: ${isSameChain ? "Same-Chain (No Bridge)" : "Cross-Chain"}`
-      );
-      console.log(`📍 Source Chain ID: ${dataToUse.sourceChainId}`);
-      console.log(`📍 Destination Chain ID: ${dataToUse.destinationChainId}`);
-      console.log(`📍 Is Same Chain: ${isSameChain}`);
-      console.log(`📍 Using Account: ${targetAccountAddress}`);
-      console.log(
-        `📍 Source Account: ${dataToUse.accountAddressOnSourceChain}`
-      );
-      console.log(
-        `📍 Destination Account: ${dataToUse.accountAddressOnDestinationChain}`
       );
 
       // Test configuration
@@ -117,88 +100,68 @@ export function useGaslessDeposit({
         bridgeAmount: BigInt(parseFloat(currentState.amount) * 1e6),
       };
 
-      // GASLESS DEPOSIT WITH EIP-3009
-      console.log("\n===== GASLESS DEPOSIT WITH EIP-3009 (using SDK) =====");
+      // NORMAL DEPOSIT - Direct Transfer
+      console.log("\n===== NORMAL DEPOSIT (using SDK) =====");
       console.log(
         `Amount: ${(Number(TEST_CONFIG.bridgeAmount) / 1e6).toFixed(6)} USDC`
       );
-      console.log(`Smart Account: ${targetAccountAddress}`);
-      console.log("\nSigning EIP-3009 authorization (GASLESS!)...");
       console.log(
-        `   From: ${walletClient.account?.address} (main wallet with USDC)`
+        `From: ${walletClient.account?.address} (User Wallet)`
       );
-      console.log(`   To: ${targetAccountAddress} (smart account)`);
-      console.log(`   ⚠️  Signing is OFF-CHAIN - NO GAS NEEDED!`);
+      console.log(
+        `To: ${dataToUse.accountAddressOnDestinationChain} (Smart Account)`
+      );
+      console.log(
+        `⚠️  This will submit an on-chain transaction (user pays gas)`
+      );
 
-      // Use SDK depositGasless function with dynamic source chain token
+      // Use SDK transferToOrchestrationAccount function
       if (!walletClient.account?.address) {
         throw new Error("Wallet account address is not available");
       }
 
-      const gaslessResult: GaslessDepositResult = await depositGasless(
-        walletClient.account.address,
-        targetAccountAddress, // ✅ Use destination account for same-chain, source for cross-chain
-        sourceNetwork.contracts.usdcToken, // ✅ Dynamic source chain token
-        TEST_CONFIG.bridgeAmount,
+      const depositResult = await transferToOrchestrationAccount(
+        dataToUse,
         walletClient,
         viemPublicClient
       );
 
-      if (!gaslessResult.success || !gaslessResult.signedAuthorization) {
+      if (!depositResult.success || !depositResult.txHash) {
         throw new Error(
-          `Gasless deposit failed: ${gaslessResult.error || "Unknown error"}`
+          `Transfer failed: ${depositResult.error || "Unknown error"}`
         );
       }
 
-      console.log("\n✅ EIP-3009 authorization signed successfully (gasless)!");
-      console.log(
-        `   Authorization From: ${gaslessResult.signedAuthorization.from}`
-      );
-      console.log(
-        `   Authorization To: ${gaslessResult.signedAuthorization.to}`
-      );
-      console.log(
-        `   Authorization Value: ${(
-          Number(gaslessResult.signedAuthorization.value) / 1e6
-        ).toFixed(6)} USDC`
-      );
-      console.log(
-        `   Authorization Nonce: ${gaslessResult.signedAuthorization.nonce}`
-      );
+      console.log("\n✅ Transfer submitted successfully!");
+      console.log(`   Transaction Hash: ${depositResult.txHash}`);
 
-      // EXACT MATCH TO TEST FILE - NOTIFY SERVER WITH SIGNED AUTHORIZATION
-      console.log(
-        "\n===== 4. NOTIFY SERVER WITH SIGNED AUTHORIZATION (using SDK) ====="
-      );
-      console.log(
-        `   Transfer Type: TRANSFER_WITH_AUTHORIZATION (${TransferType.TRANSFER_WITH_AUTHORIZATION})`
-      );
+      // Wait for transaction confirmation
+      console.log("⏳ Waiting for transaction confirmation...");
+      const receipt = await viemPublicClient.waitForTransactionReceipt({
+        hash: depositResult.txHash as `0x${string}`,
+      });
+
+      console.log(`✅ Transfer confirmed! Block: ${receipt.blockNumber}`);
+
+      // NOTIFY SERVER
+      console.log("\n===== NOTIFY SERVER OF DEPOSIT (using SDK) =====");
       console.log(`   Request ID: ${dataToUse.requestId}`);
-      console.log(
-        `   ⚠️  Note: No transaction hash needed - signing was off-chain!`
-      );
+      console.log(`   Transaction Hash: ${receipt.transactionHash}`);
+      console.log(`   Block Number: ${receipt.blockNumber}`);
 
-      // EXACT MATCH TO TEST FILE - Use SDK notifyDepositGasless function
-      await notifyDepositGasless(
-        dataToUse.requestId,
-        "0x" as `0x${string}`,
-        "0",
-        gaslessResult.signedAuthorization
-      );
+      await notifyDeposit({
+        requestId: dataToUse.requestId,
+        transactionHash: receipt.transactionHash,
+        blockNumber: receipt.blockNumber.toString(),
+      });
 
       console.log("✅ Server notified successfully!");
-      console.log(
-        "   Server will execute transferWithAuthorization in Multicall3 batch"
-      );
 
-      // EXACT MATCH TO TEST FILE - MONITOR ORCHESTRATION STATUS
+      // MONITOR ORCHESTRATION STATUS
       console.log("\n===== MONITOR ORCHESTRATION STATUS (using SDK) =====");
       if (isSameChain) {
         console.log("⏳ Server will now:");
         console.log("   1. Execute Multicall3 batch:");
-        console.log(
-          "      - transferWithAuthorization (move from user wallet to smart account)"
-        );
         console.log("      - Deploy Nexus account on chain");
         console.log("      - Execute AutoEarn module (deposit to Aave)");
         console.log("   2. Update status to COMPLETED");
@@ -206,18 +169,13 @@ export function useGaslessDeposit({
       } else {
         console.log("⏳ Server will now:");
         console.log("   1. Execute Multicall3 batch:");
-        console.log(
-          "      - transferWithAuthorization (move from user wallet to smart account)"
-        );
         console.log("      - Deploy smart account on source chain");
         console.log("      - Execute bridge operation");
         console.log("   2. Monitor destination chain for funds");
         console.log("   3. Deploy smart account on destination chain");
         console.log("   4. Execute AutoEarn module");
-        console.log("   (This may take 2-3 minutes for bridge transfer)");
       }
       console.log("\n⏳ Polling orchestration status...");
-      console.log("   ✅ Completely gasless - user only signed off-chain!");
 
       await pollOrchestrationStatus({
         requestId: dataToUse.requestId,
@@ -251,7 +209,7 @@ export function useGaslessDeposit({
     } catch (err) {
       const errorMessage = formatError(err);
       setError(errorMessage);
-      console.error("Error in gasless deposit:", err);
+      console.error("Error in normal deposit:", err);
       throw err;
     } finally {
       setLoading(false);
@@ -270,3 +228,4 @@ export function useGaslessDeposit({
     reset,
   };
 }
+

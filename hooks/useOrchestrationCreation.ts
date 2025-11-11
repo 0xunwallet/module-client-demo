@@ -50,6 +50,7 @@ export function useOrchestrationCreation({
       // Determine source and destination networks dynamically (like test file)
       const sourceChainId = parseInt(currentState.chainId);
       const destChainId = parseInt(destinationChainId);
+      const isSameChain = sourceChainId === destChainId;
 
       const sourceNetwork = getNetworkByChainId(sourceChainId);
       const destNetwork = getNetworkByChainId(destChainId);
@@ -61,6 +62,11 @@ export function useOrchestrationCreation({
       );
       console.log(
         `📍 Destination Chain: ${destNetwork.name} (${destNetwork.chainId})`
+      );
+      console.log(
+        `📍 Flow Type: ${
+          isSameChain ? "Same-Chain (No Bridge)" : "Cross-Chain"
+        }`
       );
 
       // Test configuration
@@ -75,6 +81,7 @@ export function useOrchestrationCreation({
       };
 
       // Get required state for AutoEarn module on destination chain
+      // For same-chain flows, this will be the same chain as source
       console.log("\n📊 Getting Required State");
       console.log("--------------------------");
       console.log(
@@ -84,12 +91,24 @@ export function useOrchestrationCreation({
         typeof getRequiredState
       >[0]["sourceChainId"];
 
+      // For same-chain: use the same chain ID (matching test file exactly)
+      const chainIdForRequiredState = isSameChain
+        ? sourceChainId // Use source chain ID for same-chain (matches test file)
+        : destChainId; // Use destination chain ID for cross-chain
+
       const requiredState = await getRequiredState({
         sourceChainId: String(
-          destNetwork.chainId
-        ) as unknown as SupportedChainId, // Note: parameter name is misleading - this is destination
+          chainIdForRequiredState
+        ) as unknown as SupportedChainId,
         moduleName: "AUTOEARN",
       });
+
+      // Verify that for same-chain, the requiredState chainId matches currentState chainId
+      if (isSameChain && requiredState.chainId !== String(sourceChainId)) {
+        console.warn(
+          `⚠️  Warning: Same-chain flow but requiredState.chainId (${requiredState.chainId}) doesn't match sourceChainId (${sourceChainId})`
+        );
+      }
 
       console.log("✅ Required state retrieved:");
       console.log(`   Chain ID: ${requiredState.chainId}`);
@@ -98,9 +117,10 @@ export function useOrchestrationCreation({
       console.log(`   Config Input Type: ${requiredState.configInputType}`);
 
       // Encode AutoEarn module data for destination chain
+      // For same-chain: use destination chain (which equals source chain)
       console.log("\n🔧 Encoding AutoEarn module configuration...");
       const autoEarnConfig = createAutoEarnConfig(
-        destNetwork.chainId, // ✅ Destination chain ID
+        destNetwork.chainId, // ✅ Destination chain ID (for same-chain, equals source)
         destNetwork.contracts.usdcToken, // ✅ Destination chain token
         destNetwork.contracts.aavePool // ✅ Destination chain Aave pool
       );
@@ -110,15 +130,28 @@ export function useOrchestrationCreation({
       );
 
       // Create orchestration request with source chain
+      // For same-chain flows, currentState.chainId should match requiredState.chainId
+      // This is how createOrchestrationData detects same-chain vs cross-chain
       console.log("\n🎯 Creating orchestration request...");
       const currentStateForOrchestration: CurrentState = {
         chainId: String(
           sourceNetwork.chainId
-        ) as unknown as CurrentState["chainId"], // ✅ Source chain ID
+        ) as unknown as CurrentState["chainId"], // ✅ Source chain ID (for same-chain, this matches destination)
         tokenAddress: sourceNetwork.contracts.usdcToken, // ✅ Source chain token
         tokenAmount: TEST_CONFIG.bridgeAmount.toString(),
         ownerAddress: ownerAddress as `0x${string}`,
       };
+
+      // Verify same-chain detection: currentState.chainId should match requiredState.chainId
+      if (isSameChain) {
+        console.log(
+          `✅ Same-chain flow detected: currentState.chainId (${currentStateForOrchestration.chainId}) matches requiredState.chainId (${requiredState.chainId})`
+        );
+      } else {
+        console.log(
+          `✅ Cross-chain flow: currentState.chainId (${currentStateForOrchestration.chainId}) != requiredState.chainId (${requiredState.chainId})`
+        );
+      }
 
       console.log("📝 User Intent:");
       console.log(
