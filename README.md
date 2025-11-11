@@ -5,7 +5,7 @@ This branch prepares the client application for a new `bond` module that will in
 
 ## Scope
 - introduce a dedicated `bond` module in the module catalog
-- wire the module to Bond.credit APIs and authentication
+- wire the module to Bond.credit APIs
 - surface module-specific UI flows alongside the existing experience
 
 ## Status
