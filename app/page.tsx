@@ -11,6 +11,7 @@ import {
 import { useModuleSelection } from "@/hooks/useModuleSelection";
 import { useOrchestrationCreation } from "@/hooks/useOrchestrationCreation";
 import { useGaslessDeposit } from "@/hooks/useGaslessDeposit";
+import { useNormalDeposit } from "@/hooks/useNormalDeposit";
 import { useUSDCBalance } from "@/hooks/useUSDCBalance";
 import { getUserFriendlyError } from "@/lib/error-utils";
 import {
@@ -103,16 +104,20 @@ export default function InvestmentFlow() {
     currentState,
     ownerAddress: walletClient?.account?.address || "",
     destinationChainId, // ✅ Pass destination chain
+    moduleName: module || undefined, // ✅ Pass module name
   });
 
   // Check if same-chain flow
   const isSameChain =
     sourceChain && destinationChain && sourceChain === destinationChain;
 
-  // Gasless Deposit Hook (used for both same-chain and cross-chain)
+  // Check if BondModule (uses normal deposit instead of gasless)
+  const isBondModule = module === "BOND";
+
+  // Gasless Deposit Hook (used for AUTOEARN and AUTOSWAP)
   const {
-    loading: depositLoading,
-    error: depositError,
+    loading: gaslessDepositLoading,
+    error: gaslessDepositError,
     deposit: performGaslessDeposit,
   } = useGaslessDeposit({
     orchestrationData,
@@ -120,6 +125,25 @@ export default function InvestmentFlow() {
     walletClient: walletClient ?? undefined,
     publicClient: publicClient ?? null,
   });
+
+  // Normal Deposit Hook (used for BOND module)
+  const {
+    loading: normalDepositLoading,
+    error: normalDepositError,
+    deposit: performNormalDeposit,
+  } = useNormalDeposit({
+    orchestrationData,
+    currentState,
+    walletClient: walletClient ?? undefined,
+    publicClient: publicClient ?? null,
+    moduleName: module || undefined, // Pass module name for BondModule-specific logic
+  });
+
+  // Unified deposit loading and error states
+  const depositLoading = isBondModule
+    ? normalDepositLoading
+    : gaslessDepositLoading;
+  const depositError = isBondModule ? normalDepositError : gaslessDepositError;
 
   // USDC Balance Hook
   const {
@@ -208,15 +232,27 @@ export default function InvestmentFlow() {
         orchestration.accountAddressOnDestinationChain
       );
 
-      // Perform gasless deposit with the orchestration data directly
-      await performGaslessDeposit(orchestration, {
-        onStatusUpdate: (status) => {
-          setOrchestrationStatus(status);
-        },
-        onComplete: (status) => {
-          setOrchestrationStatus(status);
-        },
-      });
+      // Perform deposit with the orchestration data directly
+      // BondModule uses normal deposit, others use gasless deposit
+      if (isBondModule) {
+        await performNormalDeposit(orchestration, {
+          onStatusUpdate: (status) => {
+            setOrchestrationStatus(status);
+          },
+          onComplete: (status) => {
+            setOrchestrationStatus(status);
+          },
+        });
+      } else {
+        await performGaslessDeposit(orchestration, {
+          onStatusUpdate: (status) => {
+            setOrchestrationStatus(status);
+          },
+          onComplete: (status) => {
+            setOrchestrationStatus(status);
+          },
+        });
+      }
     } catch (error) {
       console.error("Error executing investment:", error);
       setProcessingDialogOpen(false);
@@ -262,9 +298,24 @@ export default function InvestmentFlow() {
                     description:
                       "Called via useEffect when destination chain changes (if module already selected)",
                   },
-                  {
-                    name: "createAutoEarnConfig",
-                    params: `{
+                  ...(module === "BOND"
+                    ? [
+                        {
+                          name: "createBondModuleConfig",
+                          params: `{
+  tokenAddresses: [NETWORKS.${
+    destinationChain === "arbitrum" ? "arbitrumSepolia" : "baseSepolia"
+  }.contracts.usdcToken],
+  totalAmounts: [parseUnits(amount, 6)]
+}`,
+                          description:
+                            "Create BondModule configuration for destination chain",
+                        },
+                      ]
+                    : [
+                        {
+                          name: "createAutoEarnConfig",
+                          params: `{
   chainId: ${destinationChain === "arbitrum" ? 421614 : 84532},
   usdcToken: NETWORKS.${
     destinationChain === "arbitrum" ? "arbitrumSepolia" : "baseSepolia"
@@ -273,9 +324,10 @@ export default function InvestmentFlow() {
     destinationChain === "arbitrum" ? "arbitrumSepolia" : "baseSepolia"
   }.contracts.aavePool
 }`,
-                    description:
-                      "Create AutoEarn configuration for destination chain",
-                  },
+                          description:
+                            "Create AutoEarn configuration for destination chain",
+                        },
+                      ]),
                 ]
               : [],
           note:
@@ -314,9 +366,35 @@ export default function InvestmentFlow() {
               description:
                 "Called in createOrchestration() - create orchestration request",
             },
-            {
-              name: "depositGasless",
-              params: `{
+            ...(module === "BOND"
+              ? [
+                  {
+                    name: "deposit",
+                    params: `{
+  recipient: orchestrationData.accountAddressOnSourceChain,
+  token: NETWORKS.${
+    sourceChain === "arbitrum" ? "arbitrumSepolia" : "baseSepolia"
+  }.contracts.usdcToken,
+  amount: ${amount ? `BigInt(parseFloat("${amount}") * 1e6)` : "bridgeAmount"},
+  walletClient: walletClient,
+  publicClient: publicClient
+}`,
+                    description: `Called in performNormalDeposit() - transfer USDC to source account (ON-CHAIN). Always sends to source account address.`,
+                  },
+                  {
+                    name: "notifyDeposit",
+                    params: `{
+  requestId: orchestrationData.requestId,
+  transactionHash: receipt.transactionHash,
+  blockNumber: receipt.blockNumber.toString()
+}`,
+                    description: "Notify server of deposit transaction",
+                  },
+                ]
+              : [
+                  {
+                    name: "depositGasless",
+                    params: `{
   from: walletClient.account.address,
   to: ${
     sourceChain === destinationChain
@@ -330,12 +408,13 @@ export default function InvestmentFlow() {
   walletClient: walletClient,
   publicClient: publicClient
 }`,
-              description: `Called in performGaslessDeposit() - sign EIP-3009 authorization (OFF-CHAIN). ${
-                sourceChain === destinationChain
-                  ? "Same-chain: uses destination account"
-                  : "Cross-chain: uses source account"
-              }`,
-            },
+                    description: `Called in performGaslessDeposit() - sign EIP-3009 authorization (OFF-CHAIN). ${
+                      sourceChain === destinationChain
+                        ? "Same-chain: uses destination account"
+                        : "Cross-chain: uses source account"
+                    }`,
+                  },
+                ]),
           ],
         };
       default:
@@ -465,6 +544,36 @@ export default function InvestmentFlow() {
                       </div>
                       <p className="text-sm text-muted-foreground">
                         AI-powered strategy with verifiable execution
+                      </p>
+                    </div>
+                  </div>
+                </button>
+                <button
+                  onClick={() => handleModuleSelect("BOND")}
+                  disabled={moduleSelectionLoading}
+                  className={`group relative p-6 rounded-lg border text-left transition-all ${
+                    module === "BOND"
+                      ? "border-foreground bg-accent"
+                      : "border-border hover:border-foreground/50"
+                  } disabled:opacity-50 disabled:cursor-not-allowed`}
+                >
+                  <div className="flex items-start gap-4">
+                    <div className="w-12 h-12 rounded-lg border bg-background flex items-center justify-center">
+                      <Image
+                        src={LOGOS.USDC}
+                        alt="Bond"
+                        width={32}
+                        height={32}
+                      />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <h3 className="font-medium">Bond Module</h3>
+                        {module === "BOND" && <Check className="w-4 h-4" />}
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        Bond USDC tokens for cross-chain or same-chain
+                        operations
                       </p>
                     </div>
                   </div>
@@ -832,6 +941,8 @@ export default function InvestmentFlow() {
                       src={
                         module === "AUTOSWAP"
                           ? LOGOS.AAVE
+                          : module === "BOND"
+                          ? LOGOS.USDC
                           : LOGOS.VERIFIABLE_AGENT
                       }
                       alt="Strategy"
@@ -841,6 +952,8 @@ export default function InvestmentFlow() {
                     <span className="text-sm font-medium">
                       {module === "AUTOSWAP"
                         ? "AAVE Lending"
+                        : module === "BOND"
+                        ? "Bond Module"
                         : "Verifiable Agent"}
                     </span>
                   </div>
@@ -900,7 +1013,7 @@ export default function InvestmentFlow() {
               </div>
               <div className="p-4 rounded-lg border bg-muted/50">
                 <p className="text-sm text-muted-foreground">
-                Abstraction layer powered by Unwallet.
+                  Abstraction layer powered by Unwallet.
                 </p>
               </div>
               {(orchestrationError || depositError) && (
@@ -1083,19 +1196,53 @@ export default function InvestmentFlow() {
                     </button>
                     {showSDKFunctionsInDialog && (
                       <div className="space-y-2 mt-2">
-                        {/* notifyDepositGasless */}
-                        <div className="border rounded p-2 bg-muted/30">
-                          <code className="text-xs font-mono text-primary">
-                            notifyDepositGasless
-                          </code>
-                          <pre className="text-[10px] bg-background p-1.5 rounded overflow-x-auto border mt-1.5 mb-1 max-w-full break-all whitespace-pre-wrap">
-                            {`{ requestId, transactionHash: "0x", blockNumber: "0", signedAuthorization }`}
-                          </pre>
-                          <p className="text-[10px] text-muted-foreground">
-                            Notify server with signed authorization
-                            {isSameChain && " (Same-chain: no bridge needed)"}
-                          </p>
-                        </div>
+                        {/* Show different functions based on module */}
+                        {isBondModule ? (
+                          <>
+                            {/* deposit */}
+                            <div className="border rounded p-2 bg-muted/30">
+                              <code className="text-xs font-mono text-primary">
+                                deposit
+                              </code>
+                              <pre className="text-[10px] bg-background p-1.5 rounded overflow-x-auto border mt-1.5 mb-1 max-w-full break-all whitespace-pre-wrap">
+                                {`{ recipient, token, amount, walletClient, publicClient }`}
+                              </pre>
+                              <p className="text-[10px] text-muted-foreground">
+                                Transfer USDC to source account (ON-CHAIN)
+                              </p>
+                            </div>
+
+                            {/* notifyDeposit */}
+                            <div className="border rounded p-2 bg-muted/30">
+                              <code className="text-xs font-mono text-primary">
+                                notifyDeposit
+                              </code>
+                              <pre className="text-[10px] bg-background p-1.5 rounded overflow-x-auto border mt-1.5 mb-1 max-w-full break-all whitespace-pre-wrap">
+                                {`{ requestId, transactionHash, blockNumber }`}
+                              </pre>
+                              <p className="text-[10px] text-muted-foreground">
+                                Notify server of deposit transaction
+                              </p>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            {/* notifyDepositGasless */}
+                            <div className="border rounded p-2 bg-muted/30">
+                              <code className="text-xs font-mono text-primary">
+                                notifyDepositGasless
+                              </code>
+                              <pre className="text-[10px] bg-background p-1.5 rounded overflow-x-auto border mt-1.5 mb-1 max-w-full break-all whitespace-pre-wrap">
+                                {`{ requestId, transactionHash: "0x", blockNumber: "0", signedAuthorization }`}
+                              </pre>
+                              <p className="text-[10px] text-muted-foreground">
+                                Notify server with signed authorization
+                                {isSameChain &&
+                                  " (Same-chain: no bridge needed)"}
+                              </p>
+                            </div>
+                          </>
+                        )}
 
                         {/* pollOrchestrationStatus */}
                         <div className="border rounded p-2 bg-muted/30">

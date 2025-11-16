@@ -4,10 +4,14 @@ import {
   createOrchestrationData,
   encodeAutoEarnModuleData,
   createAutoEarnConfig,
+  encodeBondModuleData,
+  createBondModuleConfig,
 } from "unwallet";
-import type { CurrentState, OrchestrationData } from "unwallet";
+import type { CurrentState, OrchestrationData, ModuleName } from "unwallet";
 import { formatError } from "@/lib/error-utils";
 import { getNetworkByChainId } from "@/lib/chain-constants";
+import { parseUnits, createPublicClient, http } from "viem";
+import type { PublicClient } from "viem";
 
 interface UseOrchestrationCreationParams {
   currentState: {
@@ -17,6 +21,7 @@ interface UseOrchestrationCreationParams {
   } | null;
   ownerAddress: string;
   destinationChainId: string; // ✅ NEW: Destination chain ID
+  moduleName?: ModuleName; // ✅ NEW: Module name (defaults to AUTOEARN for backward compatibility)
 }
 
 interface UseOrchestrationCreationReturn {
@@ -31,6 +36,7 @@ export function useOrchestrationCreation({
   currentState,
   ownerAddress,
   destinationChainId,
+  moduleName = "AUTOEARN", // Default to AUTOEARN for backward compatibility
 }: UseOrchestrationCreationParams): UseOrchestrationCreationReturn {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -80,12 +86,12 @@ export function useOrchestrationCreation({
           process.env.NEXT_PUBLIC_API_KEY || "test-gasless-deposit-eip3009",
       };
 
-      // Get required state for AutoEarn module on destination chain
+      // Get required state for module on destination chain
       // For same-chain flows, this will be the same chain as source
       console.log("\n📊 Getting Required State");
       console.log("--------------------------");
       console.log(
-        `📊 Getting required state for AutoEarn module on ${destNetwork.name} (chainId: ${destNetwork.chainId})...`
+        `📊 Getting required state for ${moduleName} module on ${destNetwork.name} (chainId: ${destNetwork.chainId})...`
       );
       type SupportedChainId = Parameters<
         typeof getRequiredState
@@ -96,12 +102,39 @@ export function useOrchestrationCreation({
         ? sourceChainId // Use source chain ID for same-chain (matches test file)
         : destChainId; // Use destination chain ID for cross-chain
 
-      const requiredState = await getRequiredState({
+      // For BondModule, we need to pass publicClient to getRequiredState
+      // Always create destination chain public client for BondModule (matching test file)
+      let destPublicClient: PublicClient | undefined = undefined;
+      if (moduleName === "BOND") {
+        // Always create destination chain public client (matching test file pattern)
+        // The test file always creates destPublicClient regardless of source chain
+        destPublicClient = createPublicClient({
+          chain: destNetwork.chain,
+          transport: http(destNetwork.rpcUrl),
+        }) as PublicClient;
+        console.log(
+          `✅ Created destination chain public client for BondModule: ${destNetwork.name}`
+        );
+      }
+
+      // Get required state - for BondModule, pass publicClient (matching test file)
+      const getRequiredStateParams: {
+        sourceChainId: SupportedChainId;
+        moduleName: ModuleName;
+        publicClient?: PublicClient;
+      } = {
         sourceChainId: String(
           chainIdForRequiredState
         ) as unknown as SupportedChainId,
-        moduleName: "AUTOEARN",
-      });
+        moduleName: moduleName,
+      };
+
+      // For BondModule, add publicClient parameter (matching test file)
+      if (moduleName === "BOND" && destPublicClient) {
+        getRequiredStateParams.publicClient = destPublicClient;
+      }
+
+      const requiredState = await getRequiredState(getRequiredStateParams);
 
       // Verify that for same-chain, the requiredState chainId matches currentState chainId
       if (isSameChain && requiredState.chainId !== String(sourceChainId)) {
@@ -116,18 +149,45 @@ export function useOrchestrationCreation({
       console.log(`   Module Address: ${requiredState.moduleAddress}`);
       console.log(`   Config Input Type: ${requiredState.configInputType}`);
 
-      // Encode AutoEarn module data for destination chain
+      // Encode module data for destination chain
       // For same-chain: use destination chain (which equals source chain)
-      console.log("\n🔧 Encoding AutoEarn module configuration...");
-      const autoEarnConfig = createAutoEarnConfig(
-        destNetwork.chainId, // ✅ Destination chain ID (for same-chain, equals source)
-        destNetwork.contracts.usdcToken, // ✅ Destination chain token
-        destNetwork.contracts.aavePool // ✅ Destination chain Aave pool
-      );
-      const encodedData = encodeAutoEarnModuleData([autoEarnConfig]);
-      console.log(
-        `✅ Encoded AutoEarn config for chain ${autoEarnConfig.chainId}`
-      );
+      let encodedData: `0x${string}`;
+
+      if (moduleName === "BOND") {
+        console.log("\n🔧 Encoding BondModule configuration...");
+        const bridgeAmount = parseUnits(currentState.amount, 6); // USDC has 6 decimals
+        const bondConfig = createBondModuleConfig(
+          [destNetwork.contracts.usdcToken], // Token addresses to bond
+          [bridgeAmount] // Total amounts for each token
+        );
+        console.log(`✅ Created BondModule config:`);
+        console.log(
+          `   Token Addresses: ${bondConfig.tokenAddresses.join(", ")}`
+        );
+        console.log(
+          `   Total Amounts: ${bondConfig.totalAmounts
+            .map((a) => (Number(a) / 1e6).toFixed(6))
+            .join(", ")} USDC`
+        );
+        encodedData = encodeBondModuleData(bondConfig) as `0x${string}`;
+        console.log(
+          `✅ Encoded BondModule data: ${encodedData.substring(0, 66)}...`
+        );
+      } else {
+        // Default to AutoEarn for backward compatibility
+        console.log("\n🔧 Encoding AutoEarn module configuration...");
+        const autoEarnConfig = createAutoEarnConfig(
+          destNetwork.chainId, // ✅ Destination chain ID (for same-chain, equals source)
+          destNetwork.contracts.usdcToken, // ✅ Destination chain token
+          destNetwork.contracts.aavePool // ✅ Destination chain Aave pool
+        );
+        encodedData = encodeAutoEarnModuleData([
+          autoEarnConfig,
+        ]) as `0x${string}`;
+        console.log(
+          `✅ Encoded AutoEarn config for chain ${autoEarnConfig.chainId}`
+        );
+      }
 
       // Create orchestration request with source chain
       // For same-chain flows, currentState.chainId should match requiredState.chainId
@@ -159,7 +219,11 @@ export function useOrchestrationCreation({
           sourceNetwork.name
         }`
       );
-      console.log(`   Target: Invest in Aave on ${destNetwork.name}`);
+      if (moduleName === "BOND") {
+        console.log(`   Target: Bond USDC on ${destNetwork.name}`);
+      } else {
+        console.log(`   Target: Invest in Aave on ${destNetwork.name}`);
+      }
       console.log(`   User: ${ownerAddress}`);
 
       // EXACT MATCH TO TEST FILE - Create orchestration data
@@ -168,7 +232,7 @@ export function useOrchestrationCreation({
         requiredState,
         ownerAddress as `0x${string}`,
         TEST_CONFIG.apiKey,
-        encodedData as `0x${string}`
+        encodedData
       );
 
       setOrchestrationData(orchestration);

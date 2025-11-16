@@ -4,10 +4,7 @@ import {
   notifyDeposit,
   pollOrchestrationStatus,
 } from "unwallet";
-import type {
-  OrchestrationData,
-  OrchestrationStatus,
-} from "unwallet";
+import type { OrchestrationData, OrchestrationStatus } from "unwallet";
 import type { PublicClient, WalletClient } from "viem";
 import { formatError } from "@/lib/error-utils";
 import { getNetworkByChainId } from "@/lib/chain-constants";
@@ -20,6 +17,7 @@ interface UseNormalDepositParams {
   } | null;
   walletClient: WalletClient | undefined;
   publicClient: PublicClient | null | undefined;
+  moduleName?: string; // Optional: module name to determine deposit strategy
 }
 
 interface UseNormalDepositReturn {
@@ -40,6 +38,7 @@ export function useNormalDeposit({
   currentState,
   walletClient,
   publicClient,
+  moduleName,
 }: UseNormalDepositParams): UseNormalDepositReturn {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -83,13 +82,12 @@ export function useNormalDeposit({
 
       const sourceNetwork = getNetworkByChainId(sourceChainId);
       const isSameChain =
-        String(dataToUse.sourceChainId) === String(dataToUse.destinationChainId);
+        String(dataToUse.sourceChainId) ===
+        String(dataToUse.destinationChainId);
 
       console.log("\n💰 Normal Deposit Configuration");
       console.log("--------------------------------");
-      console.log(
-        `📍 Chain: ${sourceNetwork.name} (${sourceNetwork.chainId})`
-      );
+      console.log(`📍 Chain: ${sourceNetwork.name} (${sourceNetwork.chainId})`);
       console.log(`📍 Token: ${sourceNetwork.contracts.usdcToken}`);
       console.log(
         `📍 Type: ${isSameChain ? "Same-Chain (No Bridge)" : "Cross-Chain"}`
@@ -105,26 +103,52 @@ export function useNormalDeposit({
       console.log(
         `Amount: ${(Number(TEST_CONFIG.bridgeAmount) / 1e6).toFixed(6)} USDC`
       );
-      console.log(
-        `From: ${walletClient.account?.address} (User Wallet)`
-      );
-      console.log(
-        `To: ${dataToUse.accountAddressOnDestinationChain} (Smart Account)`
-      );
-      console.log(
-        `⚠️  This will submit an on-chain transaction (user pays gas)`
-      );
+      console.log(`From: ${walletClient.account?.address} (User Wallet)`);
 
-      // Use SDK transferToOrchestrationAccount function
       if (!walletClient.account?.address) {
         throw new Error("Wallet account address is not available");
       }
 
-      const depositResult = await transferToOrchestrationAccount(
-        dataToUse,
-        walletClient,
-        viemPublicClient
-      );
+      // For BondModule, always send to source account address (matching test file)
+      // For other modules, use transferToOrchestrationAccount which handles orchestration
+      let depositResult;
+      if (moduleName === "BOND") {
+        // BondModule: Always send to source account address
+        const sourceAccountAddress = dataToUse.accountAddressOnSourceChain;
+        console.log(
+          `To: ${sourceAccountAddress} (Source Account - BondModule always uses source)`
+        );
+        console.log(
+          `⚠️  This will submit an on-chain transaction (user pays gas)`
+        );
+
+        // For BondModule, create a modified orchestration data that uses source account
+        // This ensures transferToOrchestrationAccount sends to source account
+        const bondOrchestrationData = {
+          ...dataToUse,
+          accountAddressOnDestinationChain: sourceAccountAddress, // Override to use source account
+        };
+
+        depositResult = await transferToOrchestrationAccount(
+          bondOrchestrationData,
+          walletClient,
+          viemPublicClient
+        );
+      } else {
+        // Other modules: Use transferToOrchestrationAccount
+        console.log(
+          `To: ${dataToUse.accountAddressOnDestinationChain} (Smart Account)`
+        );
+        console.log(
+          `⚠️  This will submit an on-chain transaction (user pays gas)`
+        );
+
+        depositResult = await transferToOrchestrationAccount(
+          dataToUse,
+          walletClient,
+          viemPublicClient
+        );
+      }
 
       if (!depositResult.success || !depositResult.txHash) {
         throw new Error(
@@ -228,4 +252,3 @@ export function useNormalDeposit({
     reset,
   };
 }
-
