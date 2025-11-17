@@ -39,6 +39,7 @@ import type { OrchestrationStatus } from "unwallet";
 // Logo Constants
 const LOGOS = {
   VERIFIABLE_AGENT: "/verifiable-agent.svg",
+  BOND: "/bond.svg",
   AAVE: "/aave.svg",
   USDC: "/usdc.png",
   ARBITRUM: "/arbitrum.png",
@@ -560,7 +561,7 @@ export default function InvestmentFlow() {
                   <div className="flex items-start gap-4">
                     <div className="w-12 h-12 rounded-lg border bg-background flex items-center justify-center">
                       <Image
-                        src={LOGOS.USDC}
+                        src={LOGOS.BOND}
                         alt="Bond"
                         width={32}
                         height={32}
