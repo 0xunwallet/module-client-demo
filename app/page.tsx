@@ -802,12 +802,29 @@ export default function InvestmentFlow() {
                       </div>
                     </div>
                     <div className="text-right">
-                      <div className="text-xs text-muted-foreground">
-                        Balance
-                      </div>
-                      <div className="text-sm font-medium">
-                        {formatBalance(arbitrumBalance)}
-                      </div>
+                      {!balanceLoading &&
+                      (arbitrumBalance === null ||
+                        parseFloat(arbitrumBalance || "0") === 0) ? (
+                        <a
+                          href="https://faucet.circle.com/"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="inline-flex items-center gap-1.5 h-7 px-3 text-xs font-medium rounded-md border hover:bg-accent transition-colors"
+                        >
+                          Get USDC
+                          <ArrowRight className="w-3 h-3" />
+                        </a>
+                      ) : (
+                        <>
+                          <div className="text-xs text-muted-foreground">
+                            Balance
+                          </div>
+                          <div className="text-sm font-medium">
+                            {formatBalance(arbitrumBalance)}
+                          </div>
+                        </>
+                      )}
                     </div>
                   </div>
                 </button>
@@ -847,12 +864,29 @@ export default function InvestmentFlow() {
                       </div>
                     </div>
                     <div className="text-right">
-                      <div className="text-xs text-muted-foreground">
-                        Balance
-                      </div>
-                      <div className="text-sm font-medium">
-                        {formatBalance(baseBalance)}
-                      </div>
+                      {!balanceLoading &&
+                      (baseBalance === null ||
+                        parseFloat(baseBalance || "0") === 0) ? (
+                        <a
+                          href="https://faucet.circle.com/"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="inline-flex items-center gap-1.5 h-7 px-3 text-xs font-medium rounded-md border hover:bg-accent transition-colors"
+                        >
+                          Get USDC
+                          <ArrowRight className="w-3 h-3" />
+                        </a>
+                      ) : (
+                        <>
+                          <div className="text-xs text-muted-foreground">
+                            Balance
+                          </div>
+                          <div className="text-sm font-medium">
+                            {formatBalance(baseBalance)}
+                          </div>
+                        </>
+                      )}
                     </div>
                   </div>
                 </button>
