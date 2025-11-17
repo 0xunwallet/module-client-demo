@@ -520,7 +520,7 @@ export default function InvestmentFlow() {
                     </div>
                   </div>
                 </button>
-                <button
+                {/* <button
                   onClick={() => handleModuleSelect("AUTOEARN")}
                   disabled={moduleSelectionLoading}
                   className={`group relative p-6 rounded-lg border text-left transition-all ${
@@ -548,7 +548,7 @@ export default function InvestmentFlow() {
                       </p>
                     </div>
                   </div>
-                </button>
+                </button> */}
                 <button
                   onClick={() => handleModuleSelect("BOND")}
                   disabled={moduleSelectionLoading}
@@ -569,12 +569,11 @@ export default function InvestmentFlow() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
-                        <h3 className="font-medium">Bond Module</h3>
+                      <h3 className="font-medium">Verifiable Agent</h3>
                         {module === "BOND" && <Check className="w-4 h-4" />}
                       </div>
                       <p className="text-sm text-muted-foreground">
-                        Bond USDC tokens for cross-chain or same-chain
-                        operations
+                        AI-powered strategy with verifiable execution
                       </p>
                     </div>
                   </div>
@@ -658,7 +657,7 @@ export default function InvestmentFlow() {
                             width={16}
                             height={16}
                           />
-                          5% APY on USDC
+                          15% APY on USDC
                         </div>
                       </div>
                     </div>
@@ -694,7 +693,7 @@ export default function InvestmentFlow() {
                             width={16}
                             height={16}
                           />
-                          4% APY on USDC
+                          10% APY on USDC
                         </div>
                       </div>
                     </div>
@@ -977,7 +976,7 @@ export default function InvestmentFlow() {
                         module === "AUTOSWAP"
                           ? LOGOS.AAVE
                           : module === "BOND"
-                          ? LOGOS.USDC
+                          ? LOGOS.BOND
                           : LOGOS.VERIFIABLE_AGENT
                       }
                       alt="Strategy"
@@ -988,7 +987,7 @@ export default function InvestmentFlow() {
                       {module === "AUTOSWAP"
                         ? "AAVE Lending"
                         : module === "BOND"
-                        ? "Bond Module"
+                        ? "Verifiable Agent"
                         : "Verifiable Agent"}
                     </span>
                   </div>
@@ -1042,7 +1041,7 @@ export default function InvestmentFlow() {
                 <div className="p-4 flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">APY</span>
                   <span className="text-sm font-medium">
-                    {destinationChain === "arbitrum" ? "5%" : "4%"}
+                    {destinationChain === "arbitrum" ? "15%" : "10%"}
                   </span>
                 </div>
               </div>
